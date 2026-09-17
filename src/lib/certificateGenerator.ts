@@ -546,7 +546,8 @@ export async function renderCertificateToCanvas(
 
   // COLUMN 1: Left (Cryptographic QR Verification Block with ID & Date)
   const leftColCenterX = 610;
-  const verifyUrl = data.verificationUrl || `${window.location.origin}/verify/${certNumber}`;
+  const baseUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin.replace(/\/+$/, '') : '';
+  const verifyUrl = data.verificationUrl || `${baseUrl}/?verify=${encodeURIComponent(certNumber)}`;
   await drawVerificationBlock(
     ctx,
     leftColCenterX,
@@ -605,7 +606,8 @@ export async function generateCertificatePdf(data: CertificateData): Promise<{
   const offscreenCanvas = document.createElement('canvas');
   const pngDataUrl = await renderCertificateToCanvas(data, offscreenCanvas);
 
-  const verifyUrl = data.verificationUrl || `${window.location.origin}/verify/${data.certificateNumber || 'CERT-2026-0001'}`;
+  const baseUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin.replace(/\/+$/, '') : '';
+  const verifyUrl = data.verificationUrl || `${baseUrl}/?verify=${encodeURIComponent(data.certificateNumber || 'CERT-2026-0001')}`;
   const qrCodeUrl = await QRCode.toDataURL(verifyUrl, {
     errorCorrectionLevel: 'H',
     width: 280,

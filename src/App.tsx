@@ -127,21 +127,36 @@ export default function App() {
     }
   };
 
-  // Check URL path and hash for verify links (e.g. /verify/CERT-2026-0001 or #verify/CERT-2026-0001) or student profiles (#student/xyz)
+  // Check URL path, query params, and hash for verify links (e.g. /verify/CERT-2026-0001, ?verify=CERT-2026-0001, or #verify/CERT-2026-0001)
   useEffect(() => {
     const handleRouteCheck = () => {
       const hash = window.location.hash;
       const pathname = window.location.pathname;
+      const searchParams = new URLSearchParams(window.location.search);
+      const verifyQueryParam = searchParams.get('verify') || searchParams.get('cert') || searchParams.get('id');
 
-      if (hash.startsWith('#verify/')) {
-        const certCode = decodeURIComponent(hash.replace('#verify/', ''));
-        setVerifyInitialCertId(certCode);
-        setVerifyModalOpen(true);
-      } else if (pathname.startsWith('/verify/')) {
-        const certCode = decodeURIComponent(pathname.replace('/verify/', ''));
+      if (verifyQueryParam) {
+        const certCode = decodeURIComponent(verifyQueryParam.trim());
         if (certCode) {
           setVerifyInitialCertId(certCode);
           setVerifyModalOpen(true);
+          return;
+        }
+      }
+
+      if (hash.startsWith('#verify/')) {
+        const certCode = decodeURIComponent(hash.replace('#verify/', '').trim());
+        if (certCode) {
+          setVerifyInitialCertId(certCode);
+          setVerifyModalOpen(true);
+          return;
+        }
+      } else if (pathname.startsWith('/verify/')) {
+        const certCode = decodeURIComponent(pathname.replace('/verify/', '').trim());
+        if (certCode) {
+          setVerifyInitialCertId(certCode);
+          setVerifyModalOpen(true);
+          return;
         }
       } else if (hash.startsWith('#direction/')) {
         const dir = decodeURIComponent(hash.replace('#direction/', ''));
@@ -370,6 +385,13 @@ export default function App() {
           }
           if (window.location.pathname.startsWith('/verify/')) {
             window.history.replaceState(null, '', '/');
+          }
+          if (window.location.search.includes('verify=') || window.location.search.includes('cert=') || window.location.search.includes('id=')) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('verify');
+            url.searchParams.delete('cert');
+            url.searchParams.delete('id');
+            window.history.replaceState(null, '', url.pathname + (url.search ? url.search : '') + url.hash);
           }
         }}
       />

@@ -646,21 +646,53 @@ export async function deleteCertificateDoc(
   await softDeleteDocument('certificates', id, 'Sertifikat', actor);
 }
 
-export async function getCertificateByNumber(certNumber: string): Promise<CertificateItem | null> {
-  const q = query(
+export async function getCertificateByNumber(certInput: string): Promise<CertificateItem | null> {
+  if (!certInput) return null;
+  let cleanInput = certInput.trim();
+
+  // If user pasted a full URL or path, extract the certificate ID
+  if (cleanInput.includes('verify/')) {
+    cleanInput = cleanInput.split('verify/').pop()?.split('?')[0]?.split('#')[0] || cleanInput;
+  } else if (cleanInput.includes('verify=')) {
+    cleanInput = cleanInput.split('verify=').pop()?.split('&')[0]?.split('#')[0] || cleanInput;
+  }
+  cleanInput = decodeURIComponent(cleanInput).trim();
+  const upper = cleanInput.toUpperCase();
+
+  // Try uppercase query
+  const qUpper = query(
     collection(db, 'certificates'),
-    where('certificateNumber', '==', certNumber.trim().toUpperCase())
+    where('certificateNumber', '==', upper)
   );
-  const snapshot = await getDocs(q);
-  if (!snapshot.empty) {
-    const d = snapshot.docs[0];
+  const snapUpper = await getDocs(qUpper);
+  if (!snapUpper.empty) {
+    const d = snapUpper.docs[0];
     return { id: d.id, ...d.data() } as CertificateItem;
   }
-  // Try matching directly by doc ID
-  const directSnap = await getDoc(doc(db, 'certificates', certNumber.trim()));
-  if (directSnap.exists()) {
-    return { id: directSnap.id, ...directSnap.data() } as CertificateItem;
+
+  // Try exact match if different
+  if (cleanInput !== upper) {
+    const qExact = query(
+      collection(db, 'certificates'),
+      where('certificateNumber', '==', cleanInput)
+    );
+    const snapExact = await getDocs(qExact);
+    if (!snapExact.empty) {
+      const d = snapExact.docs[0];
+      return { id: d.id, ...d.data() } as CertificateItem;
+    }
   }
+
+  // Try matching directly by doc ID
+  try {
+    const directSnap = await getDoc(doc(db, 'certificates', cleanInput));
+    if (directSnap.exists()) {
+      return { id: directSnap.id, ...directSnap.data() } as CertificateItem;
+    }
+  } catch (_) {
+    // Ignore invalid doc id syntax
+  }
+
   return null;
 }
 
