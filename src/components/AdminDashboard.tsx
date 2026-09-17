@@ -246,6 +246,15 @@ export const AdminDashboard: React.FC<Props> = ({
   const [studentCourseFilter, setStudentCourseFilter] = useState<string>('all');
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all');
 
+  // Supervisor Search, Filters & Pagination
+  const [supervisorSearch, setSupervisorSearch] = useState('');
+  const [supervisorDepartmentFilter, setSupervisorDepartmentFilter] = useState<string>('all');
+  const [supervisorDegreeFilter, setSupervisorDegreeFilter] = useState<string>('all');
+  const [supervisorStudentsFilter, setSupervisorStudentsFilter] = useState<'all' | 'has_students' | 'no_students'>('all');
+  const [supervisorCurrentPage, setSupervisorCurrentPage] = useState<number>(1);
+  const [selectedSupervisorForStudents, setSelectedSupervisorForStudents] = useState<SupervisorProfile | null>(null);
+  const [isSupervisorStudentsModalOpen, setIsSupervisorStudentsModalOpen] = useState(false);
+
   // New Supervisor modal
   const [isSupervisorModalOpen, setIsSupervisorModalOpen] = useState(false);
   const [supFullName, setSupFullName] = useState('');
@@ -441,6 +450,66 @@ export const AdminDashboard: React.FC<Props> = ({
     const totalParticipants = events.reduce((sum, e) => sum + (e.participantIds?.length || 0), 0);
     return { totalEvents, activeEvents, totalParticipants };
   }, [events]);
+
+  // Available unique departments and degrees for supervisor filters
+  const supervisorDepartments = React.useMemo(() => {
+    return Array.from(
+      new Set(
+        supervisors
+          .filter(s => !s.isDeleted)
+          .map(s => s.department)
+          .filter((d): d is string => Boolean(d && d.trim()))
+      )
+    ).sort();
+  }, [supervisors]);
+
+  const supervisorDegrees = React.useMemo(() => {
+    return Array.from(
+      new Set(
+        supervisors
+          .filter(s => !s.isDeleted)
+          .map(s => s.academicDegree)
+          .filter((d): d is string => Boolean(d && d.trim()))
+      )
+    ).sort();
+  }, [supervisors]);
+
+  const filteredSupervisors = React.useMemo(() => {
+    const q = (supervisorSearch || '').toLowerCase().trim();
+    return supervisors
+      .filter(s => !s.isDeleted)
+      .filter(s => {
+        const matchSearch =
+          !q ||
+          (s.fullName || '').toLowerCase().includes(q) ||
+          (s.department || '').toLowerCase().includes(q) ||
+          (s.position || '').toLowerCase().includes(q) ||
+          (s.academicDegree || '').toLowerCase().includes(q) ||
+          (s.phone || '').toLowerCase().includes(q) ||
+          (s.email || '').toLowerCase().includes(q);
+
+        const matchDept =
+          supervisorDepartmentFilter === 'all' || s.department === supervisorDepartmentFilter;
+
+        const matchDegree =
+          supervisorDegreeFilter === 'all' || s.academicDegree === supervisorDegreeFilter;
+
+        const assignedCount = students.filter(st => st.supervisorId === s.id && !st.isDeleted).length;
+        const matchStudents =
+          supervisorStudentsFilter === 'all' ||
+          (supervisorStudentsFilter === 'has_students' && assignedCount > 0) ||
+          (supervisorStudentsFilter === 'no_students' && assignedCount === 0);
+
+        return matchSearch && matchDept && matchDegree && matchStudents;
+      });
+  }, [supervisors, students, supervisorSearch, supervisorDepartmentFilter, supervisorDegreeFilter, supervisorStudentsFilter]);
+
+  const SUPERVISOR_PAGE_SIZE = 15;
+  const totalSupervisorPages = Math.max(1, Math.ceil(filteredSupervisors.length / SUPERVISOR_PAGE_SIZE));
+  const paginatedSupervisors = React.useMemo(() => {
+    const start = (supervisorCurrentPage - 1) * SUPERVISOR_PAGE_SIZE;
+    return filteredSupervisors.slice(start, start + SUPERVISOR_PAGE_SIZE);
+  }, [filteredSupervisors, supervisorCurrentPage, SUPERVISOR_PAGE_SIZE]);
 
   // Debounced search for student query
   useEffect(() => {
@@ -1807,28 +1876,41 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* TAB 3: SUPERVISORS */}
       {activeTab === 'supervisors' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Ilmiy rahbarlar ro‘yxati</h2>
-              <p className="text-xs text-slate-500">Kafedralar bo'yicha ilmiy rahbarlar, ularning unvonlari va biriktirilgan talabalar soni.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Ilmiy rahbarlar bazasi</h2>
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
+                  Jami: {supervisors.filter(s => !s.isDeleted).length} nafar
+                </span>
+                {filteredSupervisors.length !== supervisors.filter(s => !s.isDeleted).length && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredSupervisors.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Kafedralar bo‘yicha ilmiy rahbarlar, ularning unvonlari, biriktirilgan talabalar va hisobotlar boshqaruvi.
+              </p>
             </div>
+
             <div className="flex flex-wrap items-center gap-2">
               {(hasPermission(currentUser, 'supervisors', 'export') || hasPermission(currentUser, 'excel', 'export')) && (
                 <button
                   type="button"
                   onClick={() => exportSupervisorsToExcel(supervisors)}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
                   title="Ilmiy rahbarlar ro‘yxatini Excel (.xlsx) formatida yuklab olish"
                 >
                   <FileSpreadsheet className="w-4 h-4" />
-                  <span>Excelga yuklash</span>
+                  <span>Ilmiy rahbarlar Excel</span>
                 </button>
               )}
               {hasPermission(currentUser, 'supervisors', 'create') && (
                 <button
                   type="button"
                   onClick={() => setIsSupervisorModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Yangi ilmiy rahbar qo‘shish</span>
@@ -1837,112 +1919,429 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          {supervisors.length === 0 ? (
+          {/* Filters Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="F.I.Sh, kafedra, lavozim, unvon yoki telefon bo‘yicha qidirish..."
+                value={supervisorSearch}
+                onChange={e => {
+                  setSupervisorSearch(e.target.value);
+                  setSupervisorCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={supervisorDepartmentFilter}
+                onChange={e => {
+                  setSupervisorDepartmentFilter(e.target.value);
+                  setSupervisorCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 max-w-[200px] truncate"
+              >
+                <option value="all">Barcha kafedralar</option>
+                {supervisorDepartments.map(dep => (
+                  <option key={dep} value={dep}>{dep}</option>
+                ))}
+              </select>
+
+              <select
+                value={supervisorDegreeFilter}
+                onChange={e => {
+                  setSupervisorDegreeFilter(e.target.value);
+                  setSupervisorCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 max-w-[180px] truncate"
+              >
+                <option value="all">Barcha ilmiy darajalar</option>
+                {supervisorDegrees.map(deg => (
+                  <option key={deg} value={deg}>{deg}</option>
+                ))}
+              </select>
+
+              <select
+                value={supervisorStudentsFilter}
+                onChange={e => {
+                  setSupervisorStudentsFilter(e.target.value as any);
+                  setSupervisorCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+              >
+                <option value="all">Barcha rahbarlar</option>
+                <option value="has_students">Talabasi biriktirilgan</option>
+                <option value="no_students">Talaba biriktirilmagan</option>
+              </select>
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {filteredSupervisors.length === 0 ? (
             <EmptyState
-              title="Ilmiy rahbarlar yo‘q"
-              description="Hozircha birorta ham ilmiy rahbar qo‘shilmagan."
-              action={hasPermission(currentUser, 'supervisors', 'create') ? {
-                label: "Ilmiy rahbar qo'shish",
-                onClick: () => setIsSupervisorModalOpen(true),
-              } : undefined}
+              title="Ilmiy rahbar topilmadi"
+              description="Tanlangan qidiruv yoki filtr mezonlari bo‘yicha hech qanday ilmiy rahbar topilmadi."
+              action={
+                supervisors.filter(s => !s.isDeleted).length === 0 && hasPermission(currentUser, 'supervisors', 'create')
+                  ? {
+                      label: "Ilmiy rahbar qo'shish",
+                      onClick: () => setIsSupervisorModalOpen(true),
+                    }
+                  : undefined
+              }
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {supervisors.filter(s => !s.isDeleted).map(sup => {
-                const assignedCount = students.filter(s => s.supervisorId === sup.id).length;
-                return (
-                  <div key={sup.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-xl bg-purple-900 text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0 overflow-hidden">
+            <>
+              {/* MOBILE CARD LIST (md:hidden) */}
+              <div className="md:hidden space-y-3">
+                {paginatedSupervisors.map(sup => {
+                  const assignedStudents = students.filter(s => s.supervisorId === sup.id && !s.isDeleted);
+                  return (
+                    <div key={sup.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-xl bg-purple-900 text-white font-bold flex items-center justify-center text-sm shadow-xs shrink-0 overflow-hidden">
                             {sup.avatarUrl || sup.photoURL ? (
                               <img src={sup.avatarUrl || sup.photoURL} alt={sup.fullName} className="w-full h-full object-cover" />
                             ) : (
                               (sup.fullName || 'R').charAt(0).toUpperCase()
                             )}
                           </div>
-                          <div>
-                            <h3 className="text-base font-bold text-slate-900">{sup.fullName}</h3>
+                          <div className="min-w-0">
+                            <h3 className="text-sm font-bold text-slate-900 break-words">{sup.fullName}</h3>
                             <p className="text-xs text-slate-500 mt-0.5">{sup.position} • {sup.academicDegree}</p>
+                            <p className="text-xs font-mono text-slate-500 mt-0.5">{sup.phone}</p>
                           </div>
                         </div>
-                        <span className="px-2 py-0.5 text-xs font-bold bg-purple-50 text-purple-900 rounded-lg border border-purple-200 shrink-0">
-                          {assignedCount} ta talaba
-                        </span>
-                      </div>
 
-                      <div className="space-y-1 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mt-3">
-                        <div>Kafedra: <strong>{sup.department}</strong></div>
-                        <div>Telefon: <strong className="font-mono">{sup.phone}</strong></div>
-                        {sup.email && <div>Email: {sup.email}</div>}
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        {hasPermission(currentUser, 'supervisors', 'edit') && (
-                          <button
-                            type="button"
-                            id={`edit-supervisor-btn-${sup.id}`}
-                            onClick={() => {
-                              setEditingSupervisor(sup);
-                              setIsEditSupervisorModalOpen(true);
-                            }}
-                            className="min-h-[38px] px-3 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                            <span>Tahrirlash</span>
-                          </button>
-                        )}
-
-                        {hasPermission(currentUser, 'supervisors', 'edit') && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setResetPassUser({
-                                id: sup.id,
-                                fullName: sup.fullName,
-                                phone: sup.phone,
-                                role: 'supervisor',
-                              });
-                              setIsResetPassModalOpen(true);
-                            }}
-                            className="min-h-[38px] px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                            title="Parolni yangilash"
-                          >
-                            <KeyRound className="w-3.5 h-3.5" />
-                            <span>Parol</span>
-                          </button>
-                        )}
-                      </div>
-
-                      {hasPermission(currentUser, 'supervisors', 'delete') && (
                         <button
                           type="button"
                           onClick={() => {
-                            onConfirmModal({
-                              title: "Ilmiy rahbarni o'chirish",
-                              message: `${sup.fullName} ni o'chirishni tasdiqlaysizmi? Hujjat Chiqindilar qutisiga o'tkaziladi.`,
-                              confirmText: "O‘chirish (Chiqindiga)",
-                              isDestructive: true,
-                              onConfirm: async () => {
-                                await deleteSupervisorProfile(sup.id, currentUser, currentUser.fullName);
-                                onNotify('success', "Ilmiy rahbar chiqindilar qutisiga o'tkazildi.");
-                              },
-                            });
+                            setSelectedSupervisorForStudents(sup);
+                            setIsSupervisorStudentsModalOpen(true);
                           }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="O‘chirish"
+                          className="px-2 py-0.5 text-xs font-bold bg-purple-50 hover:bg-purple-100 text-purple-900 rounded-lg border border-purple-200 shrink-0 cursor-pointer transition-colors"
+                          title="Biriktirilgan talabalar ro‘yxatini ko‘rish"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          {assignedStudents.length} ta talaba
                         </button>
+                      </div>
+
+                      <div className="bg-slate-50 p-3 rounded-xl text-xs space-y-1 text-slate-600">
+                        <div>Kafedra: <strong>{sup.department}</strong></div>
+                        <div>Lavozim: <strong>{sup.position}</strong></div>
+                        <div>Ilmiy daraja / unvon: <strong>{sup.academicDegree}</strong></div>
+                        {sup.email && <div className="truncate">Email: {sup.email}</div>}
+                      </div>
+
+                      {assignedStudents.length > 0 && (
+                        <div className="pt-1">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                            <span>Biriktirilgan talabalar ({assignedStudents.length}):</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedSupervisorForStudents(sup);
+                                setIsSupervisorStudentsModalOpen(true);
+                              }}
+                              className="text-blue-900 hover:underline normal-case font-bold cursor-pointer"
+                            >
+                              Barchasini ko‘rish
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {assignedStudents.slice(0, 3).map(st => (
+                              <button
+                                key={st.id}
+                                type="button"
+                                onClick={() => onOpenStudentProfile?.(st.id)}
+                                className="px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-900 text-[11px] font-medium rounded-md truncate max-w-[150px] transition-colors cursor-pointer"
+                                title={`${st.fullName} (${st.course}-kurs)`}
+                              >
+                                {st.fullName}
+                              </button>
+                            ))}
+                            {assignedStudents.length > 3 && (
+                              <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[11px] font-bold rounded-md">
+                                +{assignedStudents.length - 3} ta
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       )}
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedSupervisorForStudents(sup);
+                              setIsSupervisorStudentsModalOpen(true);
+                            }}
+                            className="min-h-[40px] px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Biriktirilgan talabalarni ko‘rish"
+                          >
+                            <Users className="w-4 h-4" />
+                            <span>Talabalar</span>
+                          </button>
+
+                          {hasPermission(currentUser, 'supervisors', 'edit') && (
+                            <button
+                              type="button"
+                              id={`edit-supervisor-mobile-${sup.id}`}
+                              onClick={() => {
+                                setEditingSupervisor(sup);
+                                setIsEditSupervisorModalOpen(true);
+                              }}
+                              className="min-h-[40px] px-3 py-1.5 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Tahrirlash</span>
+                            </button>
+                          )}
+
+                          {hasPermission(currentUser, 'supervisors', 'edit') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setResetPassUser({
+                                  id: sup.id,
+                                  fullName: sup.fullName,
+                                  phone: sup.phone,
+                                  role: 'supervisor',
+                                });
+                                setIsResetPassModalOpen(true);
+                              }}
+                              className="min-h-[40px] px-2.5 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Parolni yangilash"
+                            >
+                              <KeyRound className="w-3.5 h-3.5" />
+                              <span>Parol</span>
+                            </button>
+                          )}
+                        </div>
+
+                        {hasPermission(currentUser, 'supervisors', 'delete') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onConfirmModal({
+                                title: "Ilmiy rahbarni o'chirish",
+                                message: `${sup.fullName} ni o'chirishni tasdiqlaysizmi? Hujjat Chiqindilar qutisiga o'tkaziladi.`,
+                                confirmText: "O‘chirish (Chiqindiga)",
+                                isDestructive: true,
+                                onConfirm: async () => {
+                                  await deleteSupervisorProfile(sup.id, currentUser, currentUser.fullName);
+                                  onNotify('success', "Ilmiy rahbar chiqindilar qutisiga o'tkazildi.");
+                                },
+                              });
+                            }}
+                            className="min-h-[40px] px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="O‘chirish"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {/* DESKTOP TABLE VIEW (hidden md:block) */}
+              <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs relative">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="px-4 py-3">Ilmiy rahbar F.I.Sh.</th>
+                        <th className="px-4 py-3">Telefon & Email</th>
+                        <th className="px-4 py-3">Kafedra</th>
+                        <th className="px-4 py-3">Lavozim & Ilmiy daraja</th>
+                        <th className="px-4 py-3">Biriktirilgan talabalar</th>
+                        <th className="px-4 py-3">Amallar</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {paginatedSupervisors.map(sup => {
+                        const assignedStudents = students.filter(s => s.supervisorId === sup.id && !s.isDeleted);
+                        return (
+                          <tr key={sup.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="px-4 py-3.5 font-bold text-slate-900">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-lg bg-purple-900 text-white font-bold flex items-center justify-center text-xs shrink-0 overflow-hidden shadow-xs">
+                                  {sup.avatarUrl || sup.photoURL ? (
+                                    <img src={sup.avatarUrl || sup.photoURL} alt={sup.fullName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    (sup.fullName || 'R').charAt(0).toUpperCase()
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="truncate max-w-[190px] font-bold text-slate-900">{sup.fullName}</div>
+                                  <div className="text-[11px] text-slate-400 font-normal truncate max-w-[190px]">
+                                    {sup.position}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-600">
+                              <div className="font-mono text-xs font-semibold text-slate-800">{sup.phone}</div>
+                              {sup.email ? (
+                                <div className="text-[11px] text-slate-400 truncate max-w-[170px]">{sup.email}</div>
+                              ) : (
+                                <div className="text-[11px] text-slate-300">—</div>
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-700">
+                              <div className="font-medium max-w-[200px] break-words">{sup.department}</div>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-purple-50 text-purple-900 border border-purple-200 text-xs font-semibold">
+                                <span>{sup.academicDegree}</span>
+                                {sup.position && <span className="text-purple-400">•</span>}
+                                {sup.position && <span className="text-[11px] font-normal text-purple-700">{sup.position}</span>}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              {assignedStudents.length > 0 ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSupervisorForStudents(sup);
+                                    setIsSupervisorStudentsModalOpen(true);
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-900 rounded-lg border border-blue-200 transition-colors cursor-pointer"
+                                  title="Biriktirilgan talabalar ro‘yxatini ko‘rish"
+                                >
+                                  <Users className="w-3.5 h-3.5" />
+                                  <span>{assignedStudents.length} ta talaba</span>
+                                </button>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 text-xs text-slate-400 bg-slate-50 rounded-lg border border-slate-200">
+                                  Biriktirilmagan
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSelectedSupervisorForStudents(sup);
+                                    setIsSupervisorStudentsModalOpen(true);
+                                  }}
+                                  className="p-1.5 text-blue-600 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Biriktirilgan talabalar ro‘yxatini ochish"
+                                >
+                                  <Users className="w-4 h-4" />
+                                </button>
+                                {hasPermission(currentUser, 'supervisors', 'edit') && (
+                                  <button
+                                    type="button"
+                                    id={`edit-supervisor-desktop-${sup.id}`}
+                                    onClick={() => {
+                                      setEditingSupervisor(sup);
+                                      setIsEditSupervisorModalOpen(true);
+                                    }}
+                                    className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Ilmiy rahbar profilini tahrirlash"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {hasPermission(currentUser, 'supervisors', 'edit') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setResetPassUser({
+                                        id: sup.id,
+                                        fullName: sup.fullName,
+                                        phone: sup.phone,
+                                        role: 'supervisor',
+                                      });
+                                      setIsResetPassModalOpen(true);
+                                    }}
+                                    className="p-1.5 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Parolni yangilash"
+                                  >
+                                    <KeyRound className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {hasPermission(currentUser, 'supervisors', 'delete') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      onConfirmModal({
+                                        title: "Ilmiy rahbarni o'chirish",
+                                        message: `${sup.fullName} ni o'chirishni tasdiqlaysizmi? Hujjat Chiqindilar qutisiga o'tkaziladi.`,
+                                        confirmText: "O‘chirish (Chiqindiga)",
+                                        isDestructive: true,
+                                        onConfirm: async () => {
+                                          await deleteSupervisorProfile(sup.id, currentUser, currentUser.fullName);
+                                          onNotify('success', "Ilmiy rahbar chiqindilar qutisiga o'tkazildi.");
+                                        },
+                                      });
+                                    }}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="O‘chirish"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-600 font-medium">
+                  Ko‘rsatilmoqda: <strong>{filteredSupervisors.length > 0 ? (supervisorCurrentPage - 1) * SUPERVISOR_PAGE_SIZE + 1 : 0}–{Math.min(supervisorCurrentPage * SUPERVISOR_PAGE_SIZE, filteredSupervisors.length)}</strong> (Jami: <strong>{filteredSupervisors.length}</strong> ta ilmiy rahbar)
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setSupervisorCurrentPage(1)}
+                    disabled={supervisorCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSupervisorCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={supervisorCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {supervisorCurrentPage} / {totalSupervisorPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setSupervisorCurrentPage(p => Math.min(totalSupervisorPages, p + 1))}
+                    disabled={supervisorCurrentPage >= totalSupervisorPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -3448,6 +3847,145 @@ export const AdminDashboard: React.FC<Props> = ({
           }}
           onNotify={onNotify}
         />
+      )}
+
+      {/* Supervisor Assigned Students Modal */}
+      {isSupervisorStudentsModalOpen && selectedSupervisorForStudents && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in duration-150">
+            {/* Modal Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between gap-3 bg-slate-50/50">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-purple-900 text-white font-bold flex items-center justify-center text-base shadow-xs shrink-0 overflow-hidden">
+                  {selectedSupervisorForStudents.avatarUrl || selectedSupervisorForStudents.photoURL ? (
+                    <img
+                      src={selectedSupervisorForStudents.avatarUrl || selectedSupervisorForStudents.photoURL}
+                      alt={selectedSupervisorForStudents.fullName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    (selectedSupervisorForStudents.fullName || 'R').charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 leading-snug">
+                    {selectedSupervisorForStudents.fullName}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {selectedSupervisorForStudents.position} • {selectedSupervisorForStudents.academicDegree}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Kafedra: <strong className="text-slate-700">{selectedSupervisorForStudents.department}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSupervisorStudentsModalOpen(false);
+                  setSelectedSupervisorForStudents(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                title="Yopish"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body: List of Assigned Students */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
+              {(() => {
+                const assigned = students.filter(
+                  st => st.supervisorId === selectedSupervisorForStudents.id && !st.isDeleted
+                );
+
+                if (assigned.length === 0) {
+                  return (
+                    <div className="text-center py-10">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                        <Users className="w-6 h-6" />
+                      </div>
+                      <h4 className="text-sm font-bold text-slate-800">Biriktirilgan talabalar yo‘q</h4>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto mt-1">
+                        Ushbu ilmiy rahbar uchun hozircha birorta ham iqtidorli talaba biriktirilmagan. Talabalar profilini tahrirlash orqali ushbu rahbarga biriktirishingiz mumkin.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Biriktirilgan talabalar: <span className="text-blue-900 font-bold">({assigned.length} nafar)</span>
+                      </div>
+                    </div>
+
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
+                      {assigned.map(st => (
+                        <div
+                          key={st.id}
+                          className="p-3.5 bg-white hover:bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-colors"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-blue-900 text-white font-bold flex items-center justify-center text-xs shrink-0 overflow-hidden shadow-2xs">
+                              {st.avatarUrl || st.photoURL ? (
+                                <img src={st.avatarUrl || st.photoURL} alt={st.fullName} className="w-full h-full object-cover" />
+                              ) : (
+                                (st.fullName || 'T').charAt(0).toUpperCase()
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs font-bold text-slate-900 truncate">{st.fullName}</h4>
+                              <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                                {st.faculty} • {st.course}-kurs • {st.group}-guruh
+                              </p>
+                              <p className="text-[11px] font-mono text-slate-400 mt-0.5">
+                                {st.phone}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 self-end sm:self-center">
+                            {onOpenStudentProfile && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsSupervisorStudentsModalOpen(false);
+                                  setSelectedSupervisorForStudents(null);
+                                  onOpenStudentProfile(st.id);
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-900 text-xs font-semibold rounded-lg transition-colors cursor-pointer"
+                              >
+                                <span>Profilni ko‘rish</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSupervisorStudentsModalOpen(false);
+                  setSelectedSupervisorForStudents(null);
+                }}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+              >
+                Yopish
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Edit Project Modal */}
