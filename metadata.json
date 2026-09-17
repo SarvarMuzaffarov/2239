@@ -1,0 +1,8 @@
+{
+  "name": "Remix Iqtidorli Talabalar",
+  "description": "Iqtidorli talabalar uchun ilmiy, innovatsion yutuqlar, tadbirlar, sertifikatlar va faoliyatni boshqarish platformasi",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
