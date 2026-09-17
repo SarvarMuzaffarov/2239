@@ -194,7 +194,7 @@ export const AdminDashboard: React.FC<Props> = ({
     certificates.filter(c => c.isDeleted).length +
     events.filter(e => e.isDeleted).length +
     announcements.filter(a => a.isDeleted).length +
-    allUsers.filter(u => u.isDeleted).length
+    allUsers.filter(u => (u.role === 'admin' || u.role === 'superAdmin') && u.isDeleted).length
   );
 
   const adminNavItems = useMemo(() => [

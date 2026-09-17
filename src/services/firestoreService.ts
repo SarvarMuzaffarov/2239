@@ -2076,6 +2076,22 @@ export async function permanentDeleteDocument(
   }
 
   const ref = doc(db, collectionName, id);
+
+  // If student or supervisor, also delete linked user account from users collection
+  try {
+    if (collectionName === 'students' || collectionName === 'supervisors') {
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data?.userId && data.userId !== actor.id) {
+          await deleteDoc(doc(db, 'users', data.userId)).catch(() => {});
+        }
+      }
+    }
+  } catch (linkErr) {
+    console.warn('Non-fatal error deleting linked user document:', linkErr);
+  }
+
   await withFirestoreTimeout(
     deleteDoc(ref),
     12000,
@@ -2113,6 +2129,29 @@ export async function emptyTrashPermanently(
   const safeItems = items.filter(
     item => !(item.collectionName === 'users' && item.id === actor.id)
   );
+
+  // If deleting all trash or if students/supervisors are in the batch, clean up linked & orphaned soft-deleted user docs
+  const additionalUserDocIds = new Set<string>();
+  const isFullPurge = scopeDescription.toLowerCase().includes('barcha') || scopeDescription.toLowerCase().includes('butunlay');
+
+  if (isFullPurge) {
+    try {
+      const deletedUsersSnap = await getDocs(query(collection(db, 'users'), where('isDeleted', '==', true)));
+      deletedUsersSnap.forEach(d => {
+        if (d.id !== actor.id) {
+          additionalUserDocIds.add(d.id);
+        }
+      });
+    } catch (err) {
+      console.warn('Non-fatal error querying soft-deleted users in emptyTrashPermanently:', err);
+    }
+  }
+
+  for (const uid of additionalUserDocIds) {
+    if (!safeItems.some(i => i.collectionName === 'users' && i.id === uid)) {
+      safeItems.push({ collectionName: 'users', id: uid, categoryLabel: 'Hisob' });
+    }
+  }
 
   let deletedCount = 0;
   const CHUNK_SIZE = 300; // Well below 500 limit for Firestore writeBatch
@@ -2157,6 +2196,24 @@ export async function restoreDocumentsBatch(
   let restoredCount = 0;
   const CHUNK_SIZE = 300;
 
+  // Gather any linked user account IDs for students or supervisors to restore them together
+  const linkedUserIdsToRestore = new Set<string>();
+  for (const item of items) {
+    if (item.collectionName === 'students' || item.collectionName === 'supervisors') {
+      try {
+        const snap = await getDoc(doc(db, item.collectionName, item.id));
+        if (snap.exists()) {
+          const data = snap.data();
+          if (data?.userId) {
+            linkedUserIdsToRestore.add(data.userId);
+          }
+        }
+      } catch (err) {
+        console.warn('Non-fatal error gathering linked user for batch restore:', err);
+      }
+    }
+  }
+
   for (let i = 0; i < items.length; i += CHUNK_SIZE) {
     const chunk = items.slice(i, i + CHUNK_SIZE);
     const batch = writeBatch(db);
@@ -2167,6 +2224,17 @@ export async function restoreDocumentsBatch(
         isDeleted: false,
         deletedAt: null,
         deletedBy: null,
+        updatedAt: now,
+      });
+    }
+
+    for (const uid of linkedUserIdsToRestore) {
+      const userRef = doc(db, 'users', uid);
+      batch.update(userRef, {
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        isActive: true,
         updatedAt: now,
       });
     }
