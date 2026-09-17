@@ -25,7 +25,17 @@ import {
   checkSuperAdminExists,
   refreshUserSessionActivity,
 } from './services/authService';
-import { subscribeToCollection } from './services/firestoreService';
+import {
+  subscribeStudents,
+  subscribeSupervisors,
+  subscribeProjectsAndStartups,
+  subscribeAchievements,
+  subscribeCertificates,
+  subscribeEvents,
+  subscribeAnnouncements,
+  subscribeUsers,
+  subscribeAuditLogs,
+} from './services/firestoreService';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { normalizePhone } from './lib/crypto';
@@ -223,26 +233,31 @@ export default function App() {
   // Real-time listener for current user's own document (ensures permissions, photo, role, and status update instantly)
   useEffect(() => {
     if (!currentUser?.id) return;
+    const currentUserId = currentUser.id;
     const unsubUser = onSnapshot(
-      doc(db, 'users', currentUser.id),
+      doc(db, 'users', currentUserId),
       snap => {
         if (snap.exists()) {
           const fresh = { id: snap.id, ...snap.data() } as UserAccount;
-          const permsChanged = JSON.stringify(fresh.permissions || {}) !== JSON.stringify(currentUser.permissions || {});
-          const roleChanged = fresh.role !== currentUser.role;
-          const statusChanged = fresh.isActive !== currentUser.isActive || fresh.isDeleted !== currentUser.isDeleted;
-          const infoChanged = (
-            fresh.avatarUrl !== currentUser.avatarUrl ||
-            fresh.photoURL !== currentUser.photoURL ||
-            fresh.fullName !== currentUser.fullName ||
-            fresh.position !== currentUser.position ||
-            fresh.phone !== currentUser.phone
-          );
+          setCurrentUser(prev => {
+            if (!prev) return fresh;
+            const permsChanged = JSON.stringify(fresh.permissions || {}) !== JSON.stringify(prev.permissions || {});
+            const roleChanged = fresh.role !== prev.role;
+            const statusChanged = fresh.isActive !== prev.isActive || fresh.isDeleted !== prev.isDeleted;
+            const infoChanged = (
+              fresh.avatarUrl !== prev.avatarUrl ||
+              fresh.photoURL !== prev.photoURL ||
+              fresh.fullName !== prev.fullName ||
+              fresh.position !== prev.position ||
+              fresh.phone !== prev.phone
+            );
 
-          if (permsChanged || roleChanged || statusChanged || infoChanged) {
-            setCurrentUser(prev => (prev ? { ...prev, ...fresh } : fresh));
-            saveUserSession(fresh);
-          }
+            if (permsChanged || roleChanged || statusChanged || infoChanged) {
+              saveUserSession(fresh);
+              return { ...prev, ...fresh };
+            }
+            return prev;
+          });
 
           if (fresh.isActive === false || fresh.isDeleted) {
             notify('error', 'Hisobingiz ma‘muriyat tomonidan to‘xtatildi yoki o‘chirildi.');
@@ -255,7 +270,7 @@ export default function App() {
       }
     );
     return () => unsubUser();
-  }, [currentUser?.id, currentUser?.permissions, currentUser?.role, currentUser?.isActive, currentUser?.isDeleted]);
+  }, [currentUser?.id]);
 
   // Refresh session activity timestamp on user interaction (idle timeout protection)
   useEffect(() => {
@@ -280,21 +295,21 @@ export default function App() {
 
   // Subscriptions to live real-time collections
   useEffect(() => {
-    const unsubStudents = subscribeToCollection<StudentProfile>('students', setStudents);
-    const unsubSupervisors = subscribeToCollection<SupervisorProfile>('supervisors', setSupervisors);
-    const unsubProjects = subscribeToCollection<ProjectOrStartup>('projects', setProjects);
-    const unsubAchievements = subscribeToCollection<Achievement>('achievements', setAchievements);
-    const unsubCertificates = subscribeToCollection<CertificateItem>('certificates', setCertificates);
-    const unsubEvents = subscribeToCollection<EventItem>('events', setEvents);
-    const unsubAnnouncements = subscribeToCollection<Announcement>('announcements', setAnnouncements);
+    const unsubStudents = subscribeStudents(setStudents);
+    const unsubSupervisors = subscribeSupervisors(setSupervisors);
+    const unsubProjects = subscribeProjectsAndStartups(setProjects);
+    const unsubAchievements = subscribeAchievements(setAchievements);
+    const unsubCertificates = subscribeCertificates(setCertificates);
+    const unsubEvents = subscribeEvents(setEvents);
+    const unsubAnnouncements = subscribeAnnouncements(setAnnouncements);
 
     // Subscriptions only needed for logged in users
     let unsubUsers = () => {};
     let unsubLogs = () => {};
 
     if (currentUser?.role === 'admin' || currentUser?.role === 'superAdmin') {
-      unsubUsers = subscribeToCollection<UserAccount>('users', setAllUsers);
-      unsubLogs = subscribeToCollection<AuditLog>('audit_logs', setAuditLogs);
+      unsubUsers = subscribeUsers(setAllUsers);
+      unsubLogs = subscribeAuditLogs(setAuditLogs);
     }
 
     return () => {
@@ -308,7 +323,7 @@ export default function App() {
       unsubUsers();
       unsubLogs();
     };
-  }, [currentUser]);
+  }, [currentUser?.role]);
 
   const handleUpdateCurrentUser = (updatedUser: UserAccount) => {
     setCurrentUser(updatedUser);

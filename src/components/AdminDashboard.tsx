@@ -41,6 +41,8 @@ import {
   Archive,
   KeyRound,
   Ban,
+  ArrowUpDown,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { EditStudentModal } from './EditStudentModal';
@@ -184,6 +186,17 @@ export const AdminDashboard: React.FC<Props> = ({
   const canViewTrash = isSuperAdmin || hasPermission(currentUser, 'trash', 'view');
   const canViewAudit = isSuperAdmin || hasPermission(currentUser, 'audit_logs', 'view');
 
+  const trashCount = (
+    students.filter(s => s.isDeleted).length +
+    supervisors.filter(s => s.isDeleted).length +
+    projects.filter(p => p.isDeleted).length +
+    achievements.filter(a => a.isDeleted).length +
+    certificates.filter(c => c.isDeleted).length +
+    events.filter(e => e.isDeleted).length +
+    announcements.filter(a => a.isDeleted).length +
+    allUsers.filter(u => u.isDeleted).length
+  );
+
   const adminNavItems = useMemo(() => [
     { id: 'stats' as TabType, label: 'Statistika', icon: BarChart3, count: null, visible: canViewStats },
     { id: 'students' as TabType, label: 'Talabalar', icon: GraduationCap, count: students.filter(s => !s.isDeleted).length, visible: canViewStudents },
@@ -194,7 +207,7 @@ export const AdminDashboard: React.FC<Props> = ({
     { id: 'events' as TabType, label: 'Tadbirlar', icon: Calendar, count: events.filter(e => !e.isDeleted).length, visible: canViewEvents },
     { id: 'announcements' as TabType, label: "E'lonlar", icon: Bell, count: announcements.filter(a => !a.isDeleted).length, visible: canViewAnnouncements },
     { id: 'admins' as TabType, label: 'Adminlar va Huquqlar', icon: Shield, count: allUsers.filter(u => (u.role === 'admin' || u.role === 'superAdmin') && !u.isDeleted).length, visible: canViewAdmins },
-    { id: 'trash' as TabType, label: 'Chiqindilar qutisi', icon: Archive, count: null, visible: canViewTrash },
+    { id: 'trash' as TabType, label: 'Chiqindilar qutisi', icon: Archive, count: trashCount > 0 ? trashCount : null, visible: canViewTrash },
     { id: 'audit' as TabType, label: 'Audit Log', icon: FileText, count: auditLogs.length, visible: canViewAudit },
   ].filter(item => item.visible), [
     canViewStats,
@@ -241,10 +254,42 @@ export const AdminDashboard: React.FC<Props> = ({
   };
   const CurrentIcon = currentTabInfo.icon;
 
-  // Search & Filters
+  // Search & Filters for Students
   const [studentSearch, setStudentSearch] = useState('');
   const [studentCourseFilter, setStudentCourseFilter] = useState<string>('all');
+
+  // Projects Search, Filters, Sorting & Pagination
+  const [projectSearch, setProjectSearch] = useState('');
   const [projectStatusFilter, setProjectStatusFilter] = useState<string>('all');
+  const [projectTypeFilter, setProjectTypeFilter] = useState<'all' | 'loyiha' | 'startap'>('all');
+  const [projectSort, setProjectSort] = useState<'newest' | 'oldest' | 'title_asc' | 'title_desc' | 'author_asc'>('newest');
+  const [projectCurrentPage, setProjectCurrentPage] = useState<number>(1);
+
+  // Achievements Search, Filters, Sorting & Pagination
+  const [achievementSearch, setAchievementSearch] = useState('');
+  const [achievementStatusFilter, setAchievementStatusFilter] = useState<string>('all');
+  const [achievementCategoryFilter, setAchievementCategoryFilter] = useState<string>('all');
+  const [achievementSort, setAchievementSort] = useState<'newest' | 'oldest' | 'title_asc' | 'student_asc'>('newest');
+  const [achievementCurrentPage, setAchievementCurrentPage] = useState<number>(1);
+
+  // Certificates Search, Filters, Sorting & Pagination
+  const [certificateSearch, setCertificateSearch] = useState('');
+  const [certificateTypeFilter, setCertificateTypeFilter] = useState<string>('all');
+  const [certificateStatusFilter, setCertificateStatusFilter] = useState<string>('all');
+  const [certificateSort, setCertificateSort] = useState<'newest' | 'oldest' | 'number_asc' | 'student_asc' | 'title_asc'>('newest');
+  const [certificateCurrentPage, setCertificateCurrentPage] = useState<number>(1);
+
+  // Events Search, Filters, Sorting & Pagination
+  const [eventSearch, setEventSearch] = useState('');
+  const [eventStatusFilter, setEventStatusFilter] = useState<string>('all');
+  const [eventSort, setEventSort] = useState<'date_asc' | 'date_desc' | 'title_asc' | 'participants_desc'>('date_asc');
+  const [eventCurrentPage, setEventCurrentPage] = useState<number>(1);
+
+  // Announcements Search, Filters, Sorting & Pagination
+  const [announcementSearch, setAnnouncementSearch] = useState('');
+  const [announcementAudienceFilter, setAnnouncementAudienceFilter] = useState<string>('all');
+  const [announcementSort, setAnnouncementSort] = useState<'newest' | 'oldest' | 'title_asc'>('newest');
+  const [announcementCurrentPage, setAnnouncementCurrentPage] = useState<number>(1);
 
   // Supervisor Search, Filters & Pagination
   const [supervisorSearch, setSupervisorSearch] = useState('');
@@ -688,15 +733,272 @@ export const AdminDashboard: React.FC<Props> = ({
     return matchName && matchCourse;
   });
 
-  // Filtered Projects
-  const filteredProjects = projects.filter(p => {
-    if (p.isDeleted) return false;
-    const isStartup = p.type === 'startap' || p.type === 'startup';
-    if (!canViewProjects && !isStartup) return false;
-    if (!canViewStartups && isStartup) return false;
-    if (projectStatusFilter === 'all') return true;
-    return p.status === projectStatusFilter;
-  });
+  // Filtered & Sorted Projects
+  const filteredAndSortedProjects = useMemo(() => {
+    const q = (projectSearch || '').toLowerCase().trim();
+    const result = projects
+      .filter(p => !p.isDeleted)
+      .filter(p => {
+        const isStartup = p.type === 'startap' || p.type === 'startup';
+        if (!canViewProjects && !isStartup) return false;
+        if (!canViewStartups && isStartup) return false;
+
+        const matchType =
+          projectTypeFilter === 'all' ||
+          (projectTypeFilter === 'startap' ? isStartup : !isStartup);
+
+        const matchStatus =
+          projectStatusFilter === 'all' || p.status === projectStatusFilter;
+
+        const matchSearch =
+          !q ||
+          (p.title || '').toLowerCase().includes(q) ||
+          (p.studentName || '').toLowerCase().includes(q) ||
+          (p.supervisorName || '').toLowerCase().includes(q) ||
+          (p.field || '').toLowerCase().includes(q) ||
+          (p.description || '').toLowerCase().includes(q);
+
+        return matchType && matchStatus && matchSearch;
+      });
+
+    return result.sort((a, b) => {
+      if (projectSort === 'newest') {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tB - tA;
+      }
+      if (projectSort === 'oldest') {
+        const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tA - tB;
+      }
+      if (projectSort === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+      if (projectSort === 'title_desc') {
+        return (b.title || '').localeCompare(a.title || '');
+      }
+      if (projectSort === 'author_asc') {
+        return (a.studentName || '').localeCompare(b.studentName || '');
+      }
+      return 0;
+    });
+  }, [projects, canViewProjects, canViewStartups, projectTypeFilter, projectStatusFilter, projectSearch, projectSort]);
+
+  const filteredProjects = filteredAndSortedProjects;
+  const PROJECTS_PAGE_SIZE = 12;
+  const totalProjectPages = Math.max(1, Math.ceil(filteredAndSortedProjects.length / PROJECTS_PAGE_SIZE));
+  const paginatedProjects = useMemo(() => {
+    const start = (projectCurrentPage - 1) * PROJECTS_PAGE_SIZE;
+    return filteredAndSortedProjects.slice(start, start + PROJECTS_PAGE_SIZE);
+  }, [filteredAndSortedProjects, projectCurrentPage, PROJECTS_PAGE_SIZE]);
+
+  // Unique categories for achievements
+  const achievementCategories = useMemo(() => {
+    return Array.from(
+      new Set(
+        achievements
+          .filter(a => !a.isDeleted)
+          .map(a => a.category)
+          .filter((c): c is string => Boolean(c && c.trim()))
+      )
+    ).sort();
+  }, [achievements]);
+
+  // Filtered & Sorted Achievements
+  const filteredAndSortedAchievements = useMemo(() => {
+    const q = (achievementSearch || '').toLowerCase().trim();
+    const result = achievements
+      .filter(a => !a.isDeleted)
+      .filter(a => {
+        const matchStatus =
+          achievementStatusFilter === 'all' || a.status === achievementStatusFilter;
+
+        const matchCat =
+          achievementCategoryFilter === 'all' || a.category === achievementCategoryFilter;
+
+        const matchSearch =
+          !q ||
+          (a.title || '').toLowerCase().includes(q) ||
+          (a.studentName || '').toLowerCase().includes(q) ||
+          (a.category || '').toLowerCase().includes(q) ||
+          (a.description || '').toLowerCase().includes(q);
+
+        return matchStatus && matchCat && matchSearch;
+      });
+
+    return result.sort((a, b) => {
+      if (achievementSort === 'newest') {
+        const dA = a.date || a.createdAt || '';
+        const dB = b.date || b.createdAt || '';
+        return dB.localeCompare(dA);
+      }
+      if (achievementSort === 'oldest') {
+        const dA = a.date || a.createdAt || '';
+        const dB = b.date || b.createdAt || '';
+        return dA.localeCompare(dB);
+      }
+      if (achievementSort === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+      if (achievementSort === 'student_asc') {
+        return (a.studentName || '').localeCompare(b.studentName || '');
+      }
+      return 0;
+    });
+  }, [achievements, achievementStatusFilter, achievementCategoryFilter, achievementSearch, achievementSort]);
+
+  const ACHIEVEMENTS_PAGE_SIZE = 12;
+  const totalAchievementPages = Math.max(1, Math.ceil(filteredAndSortedAchievements.length / ACHIEVEMENTS_PAGE_SIZE));
+  const paginatedAchievements = useMemo(() => {
+    const start = (achievementCurrentPage - 1) * ACHIEVEMENTS_PAGE_SIZE;
+    return filteredAndSortedAchievements.slice(start, start + ACHIEVEMENTS_PAGE_SIZE);
+  }, [filteredAndSortedAchievements, achievementCurrentPage, ACHIEVEMENTS_PAGE_SIZE]);
+
+  // Filtered & Sorted Certificates
+  const filteredAndSortedCertificates = useMemo(() => {
+    const q = (certificateSearch || '').toLowerCase().trim();
+    const result = certificates
+      .filter(c => !c.isDeleted)
+      .filter(c => {
+        const matchType =
+          certificateTypeFilter === 'all' ||
+          (certificateTypeFilter === 'diplom' && c.documentType === 'diplom') ||
+          (certificateTypeFilter === 'sertifikat' && c.documentType !== 'diplom') ||
+          (certificateTypeFilter === 'official' && c.isOfficialGenerated) ||
+          (certificateTypeFilter === 'uploaded' && !c.isOfficialGenerated);
+
+        const matchStatus =
+          certificateStatusFilter === 'all' ||
+          (certificateStatusFilter === 'valid' && !c.isRevoked) ||
+          (certificateStatusFilter === 'revoked' && c.isRevoked);
+
+        const matchSearch =
+          !q ||
+          (c.title || '').toLowerCase().includes(q) ||
+          (c.studentName || '').toLowerCase().includes(q) ||
+          (c.certificateNumber || '').toLowerCase().includes(q) ||
+          (c.eventTitle || '').toLowerCase().includes(q) ||
+          (c.nomination || '').toLowerCase().includes(q);
+
+        return matchType && matchStatus && matchSearch;
+      });
+
+    return result.sort((a, b) => {
+      if (certificateSort === 'newest') {
+        const dA = a.issueDate || a.createdAt || '';
+        const dB = b.issueDate || b.createdAt || '';
+        return dB.localeCompare(dA);
+      }
+      if (certificateSort === 'oldest') {
+        const dA = a.issueDate || a.createdAt || '';
+        const dB = b.issueDate || b.createdAt || '';
+        return dA.localeCompare(dB);
+      }
+      if (certificateSort === 'number_asc') {
+        return (a.certificateNumber || '').localeCompare(b.certificateNumber || '');
+      }
+      if (certificateSort === 'student_asc') {
+        return (a.studentName || '').localeCompare(b.studentName || '');
+      }
+      if (certificateSort === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+      return 0;
+    });
+  }, [certificates, certificateTypeFilter, certificateStatusFilter, certificateSearch, certificateSort]);
+
+  const CERTS_PAGE_SIZE = 12;
+  const totalCertPages = Math.max(1, Math.ceil(filteredAndSortedCertificates.length / CERTS_PAGE_SIZE));
+  const paginatedCertificates = useMemo(() => {
+    const start = (certificateCurrentPage - 1) * CERTS_PAGE_SIZE;
+    return filteredAndSortedCertificates.slice(start, start + CERTS_PAGE_SIZE);
+  }, [filteredAndSortedCertificates, certificateCurrentPage, CERTS_PAGE_SIZE]);
+
+  // Filtered & Sorted Events
+  const filteredAndSortedEvents = useMemo(() => {
+    const q = (eventSearch || '').toLowerCase().trim();
+    const result = events
+      .filter(e => !e.isDeleted)
+      .filter(e => {
+        const matchStatus =
+          eventStatusFilter === 'all' || e.status === eventStatusFilter;
+
+        const matchSearch =
+          !q ||
+          (e.title || '').toLowerCase().includes(q) ||
+          (e.description || '').toLowerCase().includes(q) ||
+          (e.location || '').toLowerCase().includes(q);
+
+        return matchStatus && matchSearch;
+      });
+
+    return result.sort((a, b) => {
+      if (eventSort === 'date_asc') {
+        return (a.date || '').localeCompare(b.date || '');
+      }
+      if (eventSort === 'date_desc') {
+        return (b.date || '').localeCompare(a.date || '');
+      }
+      if (eventSort === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+      if (eventSort === 'participants_desc') {
+        return (b.participantIds?.length || 0) - (a.participantIds?.length || 0);
+      }
+      return 0;
+    });
+  }, [events, eventStatusFilter, eventSearch, eventSort]);
+
+  const EVENTS_PAGE_SIZE = 10;
+  const totalEventPages = Math.max(1, Math.ceil(filteredAndSortedEvents.length / EVENTS_PAGE_SIZE));
+  const paginatedEvents = useMemo(() => {
+    const start = (eventCurrentPage - 1) * EVENTS_PAGE_SIZE;
+    return filteredAndSortedEvents.slice(start, start + EVENTS_PAGE_SIZE);
+  }, [filteredAndSortedEvents, eventCurrentPage, EVENTS_PAGE_SIZE]);
+
+  // Filtered & Sorted Announcements
+  const filteredAndSortedAnnouncements = useMemo(() => {
+    const q = (announcementSearch || '').toLowerCase().trim();
+    const result = announcements
+      .filter(a => !a.isDeleted)
+      .filter(a => {
+        const matchAudience =
+          announcementAudienceFilter === 'all' || a.audience === announcementAudienceFilter;
+
+        const matchSearch =
+          !q ||
+          (a.title || '').toLowerCase().includes(q) ||
+          (a.content || '').toLowerCase().includes(q) ||
+          (a.createdByName || '').toLowerCase().includes(q);
+
+        return matchAudience && matchSearch;
+      });
+
+    return result.sort((a, b) => {
+      if (announcementSort === 'newest') {
+        const dA = a.date || a.createdAt || '';
+        const dB = b.date || b.createdAt || '';
+        return dB.localeCompare(dA);
+      }
+      if (announcementSort === 'oldest') {
+        const dA = a.date || a.createdAt || '';
+        const dB = b.date || b.createdAt || '';
+        return dA.localeCompare(dB);
+      }
+      if (announcementSort === 'title_asc') {
+        return (a.title || '').localeCompare(b.title || '');
+      }
+      return 0;
+    });
+  }, [announcements, announcementAudienceFilter, announcementSearch, announcementSort]);
+
+  const ANNOUNCEMENTS_PAGE_SIZE = 10;
+  const totalAnnPages = Math.max(1, Math.ceil(filteredAndSortedAnnouncements.length / ANNOUNCEMENTS_PAGE_SIZE));
+  const paginatedAnnouncements = useMemo(() => {
+    const start = (announcementCurrentPage - 1) * ANNOUNCEMENTS_PAGE_SIZE;
+    return filteredAndSortedAnnouncements.slice(start, start + ANNOUNCEMENTS_PAGE_SIZE);
+  }, [filteredAndSortedAnnouncements, announcementCurrentPage, ANNOUNCEMENTS_PAGE_SIZE]);
 
   // Action: Create Supervisor Profile + Account
   const handleCreateSupervisor = async (e: React.FormEvent) => {
@@ -2349,10 +2651,23 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* TAB 4: PROJECTS & STARTUPS */}
       {activeTab === 'projects' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Loyihalar va Startaplar moderatsiyasi</h2>
-              <p className="text-xs text-slate-500">Talabalar tomonidan topshirilgan ilmiy ishlar va biznes g'oyalarni ekspertiza qilish.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Loyihalar va Startaplar moderatsiyasi</h2>
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
+                  Jami: {projects.filter(p => !p.isDeleted).length} ta
+                </span>
+                {filteredAndSortedProjects.length !== projects.filter(p => !p.isDeleted).length && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredAndSortedProjects.length} ta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Talabalar tomonidan topshirilgan ilmiy ishlar va biznes g'oyalarni ekspertiza qilish, ko‘rib chiqish va tasdiqlash.
+              </p>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -2367,155 +2682,280 @@ export const AdminDashboard: React.FC<Props> = ({
                   <span>Excelga yuklash</span>
                 </button>
               )}
+            </div>
+          </div>
 
+          {/* Search, Sort and Filter Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Loyiha nomi, talaba F.I.Sh, rahbar yoki yo‘nalish bo‘yicha qidirish..."
+                value={projectSearch}
+                onChange={e => {
+                  setProjectSearch(e.target.value);
+                  setProjectCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Type Filter */}
+              <select
+                value={projectTypeFilter}
+                onChange={e => {
+                  setProjectTypeFilter(e.target.value as any);
+                  setProjectCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha turlar (Loyiha & Startap)</option>
+                <option value="loyiha">Faqat Ilmiy loyihalar</option>
+                <option value="startap">Faqat Startap tashabbuslari</option>
+              </select>
+
+              {/* Status Filter */}
               <select
                 value={projectStatusFilter}
-                onChange={e => setProjectStatusFilter(e.target.value)}
-                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                onChange={e => {
+                  setProjectStatusFilter(e.target.value);
+                  setProjectCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
               >
                 <option value="all">Barcha statuslar</option>
                 <option value="Kutilmoqda">Kutilmoqda</option>
                 <option value="Tasdiqlangan">Tasdiqlangan</option>
                 <option value="Rad etilgan">Rad etilgan</option>
               </select>
+
+              {/* Sort Order */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 border border-slate-200 rounded-xl">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-1" />
+                <select
+                  value={projectSort}
+                  onChange={e => setProjectSort(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-700 py-1 pr-2 focus:outline-none cursor-pointer"
+                >
+                  <option value="newest">Yangi qo‘shilganlar</option>
+                  <option value="oldest">Eski qo‘shilganlar</option>
+                  <option value="title_asc">Nomi (A–Z)</option>
+                  <option value="title_desc">Nomi (Z–A)</option>
+                  <option value="author_asc">Talaba F.I.Sh (A–Z)</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(projectSearch || projectStatusFilter !== 'all' || projectTypeFilter !== 'all' || projectSort !== 'newest') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectSearch('');
+                    setProjectStatusFilter('all');
+                    setProjectTypeFilter('all');
+                    setProjectSort('newest');
+                    setProjectCurrentPage(1);
+                  }}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Barcha filtrlarni tozalash"
+                >
+                  Tozalash
+                </button>
+              )}
             </div>
           </div>
 
-          {filteredProjects.length === 0 ? (
-            <EmptyState title="Loyihalar mavjud emas" description="Tanlangan holat bo'yicha loyihalar topilmadi." />
+          {/* List or Empty State */}
+          {filteredAndSortedProjects.length === 0 ? (
+            <EmptyState
+              title="Loyihalar topilmadi"
+              description={
+                projectSearch || projectStatusFilter !== 'all' || projectTypeFilter !== 'all'
+                  ? "Kiritilgan qidiruv yoki filtr mezonlariga mos loyihalar mavjud emas."
+                  : "Hozircha birorta ham loyiha yoki startap yuklanmagan."
+              }
+            />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredProjects.map(proj => {
-                const projResource = (proj.type === 'startap' || proj.type === 'startup') ? 'startups' : 'projects';
-                return (
-                <div key={proj.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {paginatedProjects.map(proj => {
+                  const projResource = (proj.type === 'startap' || proj.type === 'startup') ? 'startups' : 'projects';
+                  return (
+                    <div
+                      key={proj.id}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-blue-200 transition-all"
+                    >
                       <div>
-                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 rounded-md mb-1 inline-block">
-                          {proj.type === 'loyiha' ? 'Ilmiy loyiha' : 'Startap tashabbusi'}
-                        </span>
-                        <h3 className="text-base font-bold text-slate-900">{proj.title}</h3>
-                      </div>
-                      <span
-                        className={`px-2.5 py-0.5 text-xs font-semibold rounded-lg ${
-                          proj.status === 'Tasdiqlangan'
-                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                            : proj.status === 'Rad etilgan'
-                            ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                            : 'bg-amber-50 text-amber-800 border border-amber-200'
-                        }`}
-                      >
-                        {proj.status}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-600 mb-3 line-clamp-3">{proj.description}</p>
-
-                    <div className="space-y-1 text-xs text-slate-500 bg-slate-50 p-3 rounded-xl mb-4">
-                      <div>Talaba: <strong className="text-slate-900">{proj.studentName}</strong> ({proj.studentPhone})</div>
-                      <div>Mualliflar: {proj.authorNames}</div>
-                      <div>Yo‘nalish: {proj.field}</div>
-                      {proj.reviewNotes && (
-                        <div className="text-amber-800 font-medium mt-1">
-                          Izoh: {proj.reviewNotes}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div>
+                            <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 rounded-md mb-1 inline-block">
+                              {proj.type === 'loyiha' ? 'Ilmiy loyiha' : 'Startap tashabbusi'}
+                            </span>
+                            <h3 className="text-base font-bold text-slate-900">{proj.title}</h3>
+                          </div>
+                          <span
+                            className={`px-2.5 py-0.5 text-xs font-semibold rounded-lg shrink-0 ${
+                              proj.status === 'Tasdiqlangan'
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                : proj.status === 'Rad etilgan'
+                                ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                                : 'bg-amber-50 text-amber-800 border border-amber-200'
+                            }`}
+                          >
+                            {proj.status}
+                          </span>
                         </div>
-                      )}
-                    </div>
-                  </div>
 
-                  <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
-                    {proj.fileUrl ? (
-                      <button
-                        onClick={() => onOpenPdf(proj.fileDataUrl || proj.fileUrl!, proj.fileName, proj.fileSize, proj.title)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-red-600" />
-                        <span>PDF Hujjatni ko‘rish</span>
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400">PDF yo‘q</span>
-                    )}
+                        <p className="text-xs text-slate-600 mb-3 line-clamp-3">{proj.description}</p>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {hasPermission(currentUser, projResource, 'edit') && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingProject(proj);
-                            setIsEditProjectModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors cursor-pointer"
-                          title="Loyihani tahrirlash"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                          <span>Tahrirlash</span>
-                        </button>
-                      )}
+                        <div className="space-y-1 text-xs text-slate-500 bg-slate-50 p-3 rounded-xl mb-4">
+                          <div>Talaba: <strong className="text-slate-900">{proj.studentName}</strong> ({proj.studentPhone})</div>
+                          <div>Mualliflar: {proj.authorNames}</div>
+                          <div>Yo‘nalish: {proj.field}</div>
+                          {proj.reviewNotes && (
+                            <div className="text-amber-800 font-medium mt-1">
+                              Izoh: {proj.reviewNotes}
+                            </div>
+                          )}
+                        </div>
+                      </div>
 
-                      {hasPermission(currentUser, projResource, 'approve') && (
-                        <>
+                      <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                        {proj.fileUrl ? (
                           <button
-                            onClick={() => {
-                              setReviewModalData({
-                                type: 'project',
-                                id: proj.id,
-                                title: proj.title,
-                                status: 'Tasdiqlangan',
-                              });
-                              setReviewNotes(proj.reviewNotes || '');
-                            }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+                            onClick={() => onOpenPdf(proj.fileDataUrl || proj.fileUrl!, proj.fileName, proj.fileSize, proj.title)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Tasdiqlash</span>
+                            <FileText className="w-3.5 h-3.5 text-red-600" />
+                            <span>PDF Hujjatni ko‘rish</span>
                           </button>
-                          <button
-                            onClick={() => {
-                              setReviewModalData({
-                                type: 'project',
-                                id: proj.id,
-                                title: proj.title,
-                                status: 'Rad etilgan',
-                              });
-                              setReviewNotes(proj.reviewNotes || '');
-                            }}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
-                          >
-                            <XCircle className="w-3.5 h-3.5" />
-                            <span>Rad etish</span>
-                          </button>
-                        </>
-                      )}
+                        ) : (
+                          <span className="text-xs text-slate-400">PDF yo‘q</span>
+                        )}
 
-                      {hasPermission(currentUser, projResource, 'delete') && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onConfirmModal({
-                              title: "Loyihani o'chirish",
-                              message: `"${proj.title}" loyihasini o'chirishni tasdiqlaysizmi? Hujjat Chiqindilar qutisiga o'tkaziladi.`,
-                              confirmText: "O‘chirish (Chiqindiga)",
-                              isDestructive: true,
-                              onConfirm: async () => {
-                                await deleteProjectOrStartup(proj.id, currentUser);
-                                onNotify('success', "Loyiha muvaffaqiyatli o'chirildi (Chiqindilar qutisiga o'tkazildi).");
-                              },
-                            });
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
-                          title="Loyihani o'chirish"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>O‘chirish</span>
-                        </button>
-                      )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {hasPermission(currentUser, projResource, 'edit') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingProject(proj);
+                                setIsEditProjectModalOpen(true);
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors cursor-pointer"
+                              title="Loyihani tahrirlash"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Tahrirlash</span>
+                            </button>
+                          )}
+
+                          {hasPermission(currentUser, projResource, 'approve') && (
+                            <>
+                              <button
+                                onClick={() => {
+                                  setReviewModalData({
+                                    type: 'project',
+                                    id: proj.id,
+                                    title: proj.title,
+                                    status: 'Tasdiqlangan',
+                                  });
+                                  setReviewNotes(proj.reviewNotes || '');
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                <span>Tasdiqlash</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setReviewModalData({
+                                    type: 'project',
+                                    id: proj.id,
+                                    title: proj.title,
+                                    status: 'Rad etilgan',
+                                  });
+                                  setReviewNotes(proj.reviewNotes || '');
+                                }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Rad etish</span>
+                              </button>
+                            </>
+                          )}
+
+                          {hasPermission(currentUser, projResource, 'delete') && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onConfirmModal({
+                                  title: "Loyihani o'chirish",
+                                  message: `"${proj.title}" loyihasini o'chirishni tasdiqlaysizmi? Hujjat Chiqindilar qutisiga o'tkaziladi.`,
+                                  confirmText: "O‘chirish (Chiqindiga)",
+                                  isDestructive: true,
+                                  onConfirm: async () => {
+                                    await deleteProjectOrStartup(proj.id, currentUser);
+                                    onNotify('success', "Loyiha muvaffaqiyatli o'chirildi (Chiqindilar qutisiga o'tkazildi).");
+                                  },
+                                });
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                              title="Loyihani o'chirish"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>O‘chirish</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
+
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-500 font-medium">
+                  Ko‘rsatilmoqda: <span className="font-bold text-slate-800">{(projectCurrentPage - 1) * PROJECTS_PAGE_SIZE + 1}–{Math.min(projectCurrentPage * PROJECTS_PAGE_SIZE, filteredAndSortedProjects.length)}</span> (Jami: <span className="font-bold text-slate-800">{filteredAndSortedProjects.length}</span> ta)
                 </div>
-                );
-              })}
-            </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setProjectCurrentPage(1)}
+                    disabled={projectCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProjectCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={projectCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {projectCurrentPage} / {totalProjectPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setProjectCurrentPage(p => Math.min(totalProjectPages, p + 1))}
+                    disabled={projectCurrentPage >= totalProjectPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -2523,95 +2963,260 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* TAB 5: ACHIEVEMENTS */}
       {activeTab === 'achievements' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Yutuqlar va Diplomlarni tekshirish</h2>
-              <p className="text-xs text-slate-500">Talabalar qo'shgan olimpiada va tanlov natijalarini hujjat asosida tasdiqlash.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Yutuqlar va Diplomlarni tekshirish</h2>
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
+                  Jami: {achievements.filter(a => !a.isDeleted).length} ta
+                </span>
+                {filteredAndSortedAchievements.length !== achievements.filter(a => !a.isDeleted).length && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredAndSortedAchievements.length} ta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Talabalar qo'shgan olimpiada va tanlov natijalarini hujjat asosida tekshirish va tasdiqlash.
+              </p>
             </div>
 
-            {(hasPermission(currentUser, 'achievements', 'export') || hasPermission(currentUser, 'excel', 'export')) && (
-              <button
-                type="button"
-                onClick={() => exportAchievementsToExcel(achievements)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
-                title="Yutuqlar ro‘yxatini Excel (.xlsx) formatida yuklab olish"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>Excelga yuklash</span>
-              </button>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {(hasPermission(currentUser, 'achievements', 'export') || hasPermission(currentUser, 'excel', 'export')) && (
+                <button
+                  type="button"
+                  onClick={() => exportAchievementsToExcel(achievements)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
+                  title="Yutuqlar ro‘yxatini Excel (.xlsx) formatida yuklab olish"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Excelga yuklash</span>
+                </button>
+              )}
+            </div>
           </div>
 
-          {achievements.length === 0 ? (
-            <EmptyState title="Yutuqlar mavjud emas" description="Talabalar tomonidan yutuqlar topshirilmagan." />
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {achievements.map(ach => (
-                <div key={ach.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <span className="px-2 py-0.5 text-[11px] font-bold bg-amber-50 text-amber-800 rounded-md border border-amber-200">
-                        {ach.category}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">{ach.status}</span>
-                    </div>
-
-                    <h3 className="text-base font-bold text-slate-900 mb-1">{ach.title}</h3>
-                    <p className="text-xs text-slate-600 mb-3 line-clamp-2">{ach.description}</p>
-
-                    <div className="text-xs text-slate-500 space-y-0.5">
-                      <div>Talaba: <strong className="text-slate-900">{ach.studentName}</strong></div>
-                      <div>Sana: {ach.date}</div>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 mt-4 flex flex-wrap items-center justify-between gap-2">
-                    {ach.fileUrl && (
-                      <button
-                        onClick={() => onOpenPdf(ach.fileDataUrl || ach.fileUrl!, ach.fileName, ach.fileSize, ach.title)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-                      >
-                        <FileText className="w-3.5 h-3.5 text-red-600" />
-                        <span>PDF</span>
-                      </button>
-                    )}
-
-                    {hasPermission(currentUser, 'achievements', 'approve') && (
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            setReviewModalData({
-                              type: 'achievement',
-                              id: ach.id,
-                              title: ach.title,
-                              status: 'Tasdiqlangan',
-                            });
-                          }}
-                          className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
-                          title="Tasdiqlash"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setReviewModalData({
-                              type: 'achievement',
-                              id: ach.id,
-                              title: ach.title,
-                              status: 'Rad etilgan',
-                            });
-                          }}
-                          className="p-1.5 text-rose-700 hover:bg-rose-50 rounded-lg cursor-pointer"
-                          title="Rad etish"
-                        >
-                          <XCircle className="w-4 h-4" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+          {/* Search, Sort and Filter Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Yutuq nomi, talaba F.I.Sh, toifasi bo‘yicha qidirish..."
+                value={achievementSearch}
+                onChange={e => {
+                  setAchievementSearch(e.target.value);
+                  setAchievementCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all"
+              />
             </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Category Filter */}
+              <select
+                value={achievementCategoryFilter}
+                onChange={e => {
+                  setAchievementCategoryFilter(e.target.value);
+                  setAchievementCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha toifalar</option>
+                {achievementCategories.map(cat => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </select>
+
+              {/* Status Filter */}
+              <select
+                value={achievementStatusFilter}
+                onChange={e => {
+                  setAchievementStatusFilter(e.target.value);
+                  setAchievementCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha statuslar</option>
+                <option value="Kutilmoqda">Kutilmoqda</option>
+                <option value="Tasdiqlangan">Tasdiqlangan</option>
+                <option value="Rad etilgan">Rad etilgan</option>
+              </select>
+
+              {/* Sort Order */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 border border-slate-200 rounded-xl">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-1" />
+                <select
+                  value={achievementSort}
+                  onChange={e => setAchievementSort(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-700 py-1 pr-2 focus:outline-none cursor-pointer"
+                >
+                  <option value="newest">Eng so‘nggi sanadagilar</option>
+                  <option value="oldest">Eski sanadagilar</option>
+                  <option value="title_asc">Nomi (A–Z)</option>
+                  <option value="student_asc">Talaba F.I.Sh (A–Z)</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(achievementSearch || achievementStatusFilter !== 'all' || achievementCategoryFilter !== 'all' || achievementSort !== 'newest') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAchievementSearch('');
+                    setAchievementStatusFilter('all');
+                    setAchievementCategoryFilter('all');
+                    setAchievementSort('newest');
+                    setAchievementCurrentPage(1);
+                  }}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Barcha filtrlarni tozalash"
+                >
+                  Tozalash
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {filteredAndSortedAchievements.length === 0 ? (
+            <EmptyState
+              title="Yutuqlar topilmadi"
+              description={
+                achievementSearch || achievementStatusFilter !== 'all' || achievementCategoryFilter !== 'all'
+                  ? "Kiritilgan qidiruv yoki filtr mezonlariga mos yutuqlar mavjud emas."
+                  : "Talabalar tomonidan hali yutuq yoki diplomlar topshirilmagan."
+              }
+            />
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paginatedAchievements.map(ach => (
+                  <div
+                    key={ach.id}
+                    className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-blue-200 transition-all"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="px-2 py-0.5 text-[11px] font-bold bg-amber-50 text-amber-800 rounded-md border border-amber-200">
+                          {ach.category}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 text-xs font-semibold rounded-lg ${
+                            ach.status === 'Tasdiqlangan'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : ach.status === 'Rad etilgan'
+                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {ach.status}
+                        </span>
+                      </div>
+
+                      <h3 className="text-base font-bold text-slate-900 mb-1">{ach.title}</h3>
+                      <p className="text-xs text-slate-600 mb-3 line-clamp-2">{ach.description}</p>
+
+                      <div className="text-xs text-slate-500 space-y-0.5 bg-slate-50 p-2.5 rounded-xl">
+                        <div>Talaba: <strong className="text-slate-900">{ach.studentName}</strong></div>
+                        <div>Sana: <span className="font-medium text-slate-700">{ach.date}</span></div>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-slate-100 mt-4 flex flex-wrap items-center justify-between gap-2">
+                      {ach.fileUrl ? (
+                        <button
+                          onClick={() => onOpenPdf(ach.fileDataUrl || ach.fileUrl!, ach.fileName, ach.fileSize, ach.title)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 text-red-600" />
+                          <span>PDF Hujjat</span>
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400">PDF yo‘q</span>
+                      )}
+
+                      {hasPermission(currentUser, 'achievements', 'approve') && (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => {
+                              setReviewModalData({
+                                type: 'achievement',
+                                id: ach.id,
+                                title: ach.title,
+                                status: 'Tasdiqlangan',
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+                            title="Tasdiqlash"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Tasdiqlash</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setReviewModalData({
+                                type: 'achievement',
+                                id: ach.id,
+                                title: ach.title,
+                                status: 'Rad etilgan',
+                              });
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                            title="Rad etish"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Rad etish</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-500 font-medium">
+                  Ko‘rsatilmoqda: <span className="font-bold text-slate-800">{(achievementCurrentPage - 1) * ACHIEVEMENTS_PAGE_SIZE + 1}–{Math.min(achievementCurrentPage * ACHIEVEMENTS_PAGE_SIZE, filteredAndSortedAchievements.length)}</span> (Jami: <span className="font-bold text-slate-800">{filteredAndSortedAchievements.length}</span> ta)
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAchievementCurrentPage(1)}
+                    disabled={achievementCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAchievementCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={achievementCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {achievementCurrentPage} / {totalAchievementPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setAchievementCurrentPage(p => Math.min(totalAchievementPages, p + 1))}
+                    disabled={achievementCurrentPage >= totalAchievementPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -2619,11 +3224,25 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* TAB 6: CERTIFICATES */}
       {activeTab === 'certificates' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Sertifikatlar boshqaruvi</h2>
-              <p className="text-xs text-slate-500">Berilgan rasmiy sertifikatlar ro‘yxati, QR-kodli tekshiruv va Excel hisoboti.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Sertifikatlar boshqaruvi</h2>
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
+                  Jami: {certificates.filter(c => !c.isDeleted).length} ta
+                </span>
+                {filteredAndSortedCertificates.length !== certificates.filter(c => !c.isDeleted).length && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredAndSortedCertificates.length} ta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Berilgan rasmiy sertifikatlar va diplomlar ro‘yxati, QR-kodli tekshiruv, yuklab olish va boshqarish.
+              </p>
             </div>
+
             <div className="flex flex-wrap items-center gap-2">
               {(hasPermission(currentUser, 'certificates', 'export') || hasPermission(currentUser, 'excel', 'export')) && (
                 <button
@@ -2649,152 +3268,286 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          {certificates.length === 0 ? (
+          {/* Search, Sort and Filter Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Sertifikat nomi, talaba F.I.Sh, raqami (ID) yoki tadbir bo‘yicha qidirish..."
+                value={certificateSearch}
+                onChange={e => {
+                  setCertificateSearch(e.target.value);
+                  setCertificateCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Type Filter */}
+              <select
+                value={certificateTypeFilter}
+                onChange={e => {
+                  setCertificateTypeFilter(e.target.value);
+                  setCertificateCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha hujjatlar</option>
+                <option value="diplom">Faqat Diplomlar</option>
+                <option value="sertifikat">Faqat Sertifikatlar</option>
+                <option value="official">Rasmiy berilganlar</option>
+                <option value="uploaded">Fayl yuklanganlar</option>
+              </select>
+
+              {/* Status Filter */}
+              <select
+                value={certificateStatusFilter}
+                onChange={e => {
+                  setCertificateStatusFilter(e.target.value);
+                  setCertificateCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha holatlar</option>
+                <option value="valid">Amaldagilar (Haqiqiy)</option>
+                <option value="revoked">Bekor qilinganlar</option>
+              </select>
+
+              {/* Sort Order */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 border border-slate-200 rounded-xl">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-1" />
+                <select
+                  value={certificateSort}
+                  onChange={e => setCertificateSort(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-700 py-1 pr-2 focus:outline-none cursor-pointer"
+                >
+                  <option value="newest">Yangi berilganlar</option>
+                  <option value="oldest">Eski berilganlar</option>
+                  <option value="number_asc">Sertifikat ID bo‘yicha</option>
+                  <option value="student_asc">Talaba F.I.Sh (A–Z)</option>
+                  <option value="title_asc">Nomi (A–Z)</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(certificateSearch || certificateTypeFilter !== 'all' || certificateStatusFilter !== 'all' || certificateSort !== 'newest') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCertificateSearch('');
+                    setCertificateTypeFilter('all');
+                    setCertificateStatusFilter('all');
+                    setCertificateSort('newest');
+                    setCertificateCurrentPage(1);
+                  }}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Barcha filtrlarni tozalash"
+                >
+                  Tozalash
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {filteredAndSortedCertificates.length === 0 ? (
             <EmptyState
-              title="Sertifikatlar mavjud emas"
-              description="Hozircha birorta sertifikat berilmagan."
+              title="Sertifikatlar topilmadi"
+              description={
+                certificateSearch || certificateTypeFilter !== 'all' || certificateStatusFilter !== 'all'
+                  ? "Kiritilgan qidiruv yoki filtr mezonlariga mos sertifikatlar mavjud emas."
+                  : "Hozircha birorta ham rasmiy sertifikat berilmagan."
+              }
               action={hasPermission(currentUser, 'certificates', 'create') ? {
                 label: "Sertifikat berish",
                 onClick: () => setIsCertIssueModalOpen(true),
               } : undefined}
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {certificates.filter(c => !c.isDeleted).map(cert => (
-                <div key={cert.id} className={`bg-white rounded-2xl border p-5 shadow-xs flex flex-col justify-between transition-colors ${cert.isRevoked ? 'border-rose-300 bg-rose-50/20' : 'border-slate-200 hover:border-emerald-200'}`}>
-                  <div>
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
-                          cert.documentType === 'diplom'
-                            ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                            : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                        }`}>
-                          {cert.isOfficialGenerated
-                            ? (cert.documentType === 'diplom' ? '🏆 Rasmiy diplom' : '🎓 Rasmiy sertifikat')
-                            : 'Yuklangan'}
-                        </span>
-                        {cert.isRevoked && (
-                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-100 text-rose-800 border border-rose-200">
-                            Bekor qilingan
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paginatedCertificates.map(cert => (
+                  <div
+                    key={cert.id}
+                    className={`bg-white rounded-2xl border p-5 shadow-xs flex flex-col justify-between transition-all ${cert.isRevoked ? 'border-rose-300 bg-rose-50/20' : 'border-slate-200 hover:border-emerald-200'}`}
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                            cert.documentType === 'diplom'
+                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                              : 'bg-emerald-100 text-emerald-900 border border-emerald-200'
+                          }`}>
+                            {cert.isOfficialGenerated
+                              ? (cert.documentType === 'diplom' ? '🏆 Rasmiy diplom' : '🎓 Rasmiy sertifikat')
+                              : 'Yuklangan'}
                           </span>
+                          {cert.isRevoked && (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-rose-100 text-rose-800 border border-rose-200">
+                              Bekor qilingan
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-semibold text-slate-600">{cert.status}</span>
+                      </div>
+
+                      <h3 className="text-base font-bold text-slate-900 mb-1">{cert.title}</h3>
+                      {cert.subtitle && (
+                        <p className="text-xs text-emerald-700 italic mb-1">{cert.subtitle}</p>
+                      )}
+                      <p className="text-xs text-slate-600 mb-2">Talaba: <strong className="text-slate-900">{cert.studentName}</strong></p>
+
+                      <div className="space-y-0.5 text-xs text-slate-500 bg-slate-50 p-2.5 rounded-xl">
+                        <div>Tadbir: {cert.eventTitle}</div>
+                        {cert.nomination && (
+                          <div className="text-emerald-800 font-medium">Nominatsiya: {cert.nomination}</div>
+                        )}
+                        <div>Sana: {cert.issueDate}</div>
+                        <div>ID: <code className="font-mono font-bold text-emerald-800">{cert.certificateNumber}</code></div>
+                        {cert.isRevoked && cert.revokedReason && (
+                          <div className="text-rose-700 font-medium mt-1">Sabab: {cert.revokedReason}</div>
                         )}
                       </div>
-                      <span className="text-xs font-semibold text-slate-600">{cert.status}</span>
                     </div>
 
-                    <h3 className="text-base font-bold text-slate-900 mb-1">{cert.title}</h3>
-                    {cert.subtitle && (
-                      <p className="text-xs text-emerald-700 italic mb-1">{cert.subtitle}</p>
-                    )}
-                    <p className="text-xs text-slate-600 mb-2">Talaba: <strong className="text-slate-900">{cert.studentName}</strong></p>
+                    <div className="pt-3 border-t border-slate-100 mt-4 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        {cert.isOfficialGenerated ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setPreviewCert(cert)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
+                              title="Diplomni ekranda ko‘rish"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-blue-600" />
+                              <span>Ko‘rish</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => downloadCertificatePdf(cert)}
+                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl transition-colors shadow-2xs cursor-pointer"
+                              title="PDF va QR-kod yuklash"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                              <span>PDF</span>
+                            </button>
+                          </>
+                        ) : cert.fileUrl ? (
+                          <button
+                            onClick={() => onOpenPdf(cert.fileDataUrl || cert.fileUrl!, cert.fileName, undefined, cert.title)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-red-600" />
+                            <span>PDF Ko‘rish</span>
+                          </button>
+                        ) : null}
+                      </div>
 
-                    <div className="space-y-0.5 text-xs text-slate-500">
-                      <div>Tadbir: {cert.eventTitle}</div>
-                      {cert.nomination && (
-                        <div className="text-emerald-800 font-medium">Nominatsiya: {cert.nomination}</div>
-                      )}
-                      <div>Sana: {cert.issueDate}</div>
-                      <div>ID: <code className="font-mono font-bold text-emerald-800">{cert.certificateNumber}</code></div>
-                      {cert.isRevoked && cert.revokedReason && (
-                        <div className="text-rose-700 font-medium mt-1">Sabab: {cert.revokedReason}</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-100 mt-4 flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-1">
-                      {cert.isOfficialGenerated ? (
-                        <>
+                      <div className="flex items-center gap-1">
+                        {hasPermission(currentUser, 'certificates', 'edit') && (
                           <button
                             type="button"
-                            onClick={() => setPreviewCert(cert)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                            title="Diplomni ekranda ko‘rish"
+                            onClick={() => {
+                              setEditingCertificate(cert);
+                              setIsEditCertModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="Tahrirlash"
                           >
-                            <Eye className="w-3.5 h-3.5 text-blue-600" />
-                            <span>Ko‘rish</span>
+                            <Pencil className="w-4 h-4" />
                           </button>
+                        )}
+
+                        {hasPermission(currentUser, 'certificates', 'edit') && !cert.isRevoked && (
                           <button
                             type="button"
-                            onClick={() => downloadCertificatePdf(cert)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl transition-colors shadow-2xs cursor-pointer"
-                            title="PDF va QR-kod yuklash"
+                            onClick={() => {
+                              setRevokingCertificate(cert);
+                              setIsRevokeCertModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            title="Sertifikatni bekor qilish (Revoke)"
                           >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>PDF</span>
+                            <Ban className="w-4 h-4" />
                           </button>
-                        </>
-                      ) : cert.fileUrl ? (
-                        <button
-                          onClick={() => onOpenPdf(cert.fileDataUrl || cert.fileUrl!, cert.fileName, undefined, cert.title)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
-                        >
-                          <FileText className="w-3.5 h-3.5 text-red-600" />
-                          <span>PDF Ko‘rish</span>
-                        </button>
-                      ) : null}
-                    </div>
+                        )}
 
-                    <div className="flex items-center gap-1">
-                      {hasPermission(currentUser, 'certificates', 'edit') && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingCertificate(cert);
-                            setIsEditCertModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="Tahrirlash"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      )}
-
-                      {hasPermission(currentUser, 'certificates', 'edit') && !cert.isRevoked && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRevokingCertificate(cert);
-                            setIsRevokeCertModalOpen(true);
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                          title="Sertifikatni bekor qilish (Revoke)"
-                        >
-                          <Ban className="w-4 h-4" />
-                        </button>
-                      )}
-
-                      {hasPermission(currentUser, 'certificates', 'delete') && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onConfirmModal({
-                              title: "Sertifikatni o‘chirish",
-                              message: `«${cert.title}» (${cert.certificateNumber}) sertifikatini o‘chirishni xohlaysizmi? Bu hujjat Chiqindilar qutisiga o‘tkaziladi va tiklash imkoni saqlanadi.`,
-                              confirmText: "O‘chirish (Chiqindiga)",
-                              confirmType: "danger",
-                              onConfirm: async () => {
-                                try {
-                                  await deleteCertificateDoc(cert.id, currentUser);
-                                  onNotify('success', "Sertifikat chiqindilar qutisiga o‘tkazildi.");
-                                } catch (e: any) {
-                                  onNotify('error', e.message || "Xatolik yuz berdi.");
-                                }
-                              },
-                            });
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="Chiqindiga tashlash"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
+                        {hasPermission(currentUser, 'certificates', 'delete') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onConfirmModal({
+                                title: "Sertifikatni o‘chirish",
+                                message: `«${cert.title}» (${cert.certificateNumber}) sertifikatini o‘chirishni xohlaysizmi? Bu hujjat Chiqindilar qutisiga o‘tkaziladi va tiklash imkoni saqlanadi.`,
+                                confirmText: "O‘chirish (Chiqindiga)",
+                                confirmType: "danger",
+                                onConfirm: async () => {
+                                  try {
+                                    await deleteCertificateDoc(cert.id, currentUser);
+                                    onNotify('success', "Sertifikat chiqindilar qutisiga o‘tkazildi.");
+                                  } catch (e: any) {
+                                    onNotify('error', e.message || "Xatolik yuz berdi.");
+                                  }
+                                },
+                              });
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Chiqindiga tashlash"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
+                ))}
+              </div>
+
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-500 font-medium">
+                  Ko‘rsatilmoqda: <span className="font-bold text-slate-800">{(certificateCurrentPage - 1) * CERTS_PAGE_SIZE + 1}–{Math.min(certificateCurrentPage * CERTS_PAGE_SIZE, filteredAndSortedCertificates.length)}</span> (Jami: <span className="font-bold text-slate-800">{filteredAndSortedCertificates.length}</span> ta)
                 </div>
-              ))}
-            </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCertificateCurrentPage(1)}
+                    disabled={certificateCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCertificateCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={certificateCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {certificateCurrentPage} / {totalCertPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setCertificateCurrentPage(p => Math.min(totalCertPages, p + 1))}
+                    disabled={certificateCurrentPage >= totalCertPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -2802,11 +3555,25 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* TAB 7: EVENTS */}
       {activeTab === 'events' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Universitet tadbirlari boshqaruvi</h2>
-              <p className="text-xs text-slate-500">Olimpiada, forum va seminarlarni rejalashtirish hamda ishtirokchilar ro'yxati.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Universitet tadbirlari boshqaruvi</h2>
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
+                  Jami: {events.length} ta
+                </span>
+                {filteredAndSortedEvents.length !== events.length && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredAndSortedEvents.length} ta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Olimpiada, forum va seminarlarni rejalashtirish, o'tkazish hamda ishtirokchilarni boshqarish.
+              </p>
             </div>
+
             {hasPermission(currentUser, 'events', 'create') && (
               <button
                 onClick={() => setIsEventModalOpen(true)}
@@ -2818,108 +3585,224 @@ export const AdminDashboard: React.FC<Props> = ({
             )}
           </div>
 
-          {events.length === 0 ? (
+          {/* Search, Sort and Filter Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Tadbir nomi, joyi yoki tavsifi bo‘yicha qidirish..."
+                value={eventSearch}
+                onChange={e => {
+                  setEventSearch(e.target.value);
+                  setEventCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status Filter */}
+              <select
+                value={eventStatusFilter}
+                onChange={e => {
+                  setEventStatusFilter(e.target.value);
+                  setEventCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha tadbirlar</option>
+                <option value="active">Faol (Muddati tugamagan)</option>
+                <option value="expired">Muddati o‘tgan</option>
+              </select>
+
+              {/* Sort Order */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 border border-slate-200 rounded-xl">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-1" />
+                <select
+                  value={eventSort}
+                  onChange={e => setEventSort(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-700 py-1 pr-2 focus:outline-none cursor-pointer"
+                >
+                  <option value="date_asc">Sanasi bo‘yicha (Yaqinlari oldinda)</option>
+                  <option value="date_desc">Sanasi bo‘yicha (Keyingilari oldinda)</option>
+                  <option value="title_asc">Nomi (A–Z)</option>
+                  <option value="participants_desc">Ishtirokchilar soni bo‘yicha</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(eventSearch || eventStatusFilter !== 'all' || eventSort !== 'date_asc') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEventSearch('');
+                    setEventStatusFilter('all');
+                    setEventSort('date_asc');
+                    setEventCurrentPage(1);
+                  }}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Barcha filtrlarni tozalash"
+                >
+                  Tozalash
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {filteredAndSortedEvents.length === 0 ? (
             <EmptyState
-              title="Tadbirlar mavjud emas"
-              description="Hozirda rejalashtirilgan tadbirlar yo'q."
+              title="Tadbirlar topilmadi"
+              description={
+                eventSearch || eventStatusFilter !== 'all'
+                  ? "Kiritilgan qidiruv yoki filtr mezonlariga mos tadbirlar mavjud emas."
+                  : "Hozirda rejalashtirilgan tadbirlar yo'q."
+              }
               action={hasPermission(currentUser, 'events', 'create') ? {
                 label: "Tadbir yaratish",
                 onClick: () => setIsEventModalOpen(true),
               } : undefined}
             />
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {events.map(ev => {
-                const deadlineInfo = ev.deadline ? getDeadlineInfo(ev.deadline) : null;
-                return (
-                  <div key={ev.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between">
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <h3 className="text-base font-bold text-slate-900">{ev.title}</h3>
-                        <button
-                          type="button"
-                          id={`event-participants-btn-${ev.id}`}
-                          onClick={() => onOpenEventParticipants?.(ev)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 transition-all cursor-pointer shadow-2xs hover:shadow-xs group shrink-0"
-                          title="Ushbu tadbir ishtirokchilari ro‘yxatini ko‘rish"
-                        >
-                          <Users className="w-3.5 h-3.5 text-blue-700 group-hover:scale-110 transition-transform" />
-                          <span>{ev.participantIds?.length || 0} ishtirokchi</span>
-                        </button>
-                      </div>
-
-                      <p className="text-xs text-slate-600 mb-3 line-clamp-3">{ev.description}</p>
-
-                      <div className="space-y-1.5 text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">
-                        <div>Sana va vaqt: <strong>{ev.date} ({ev.time})</strong></div>
-                        <div>O‘tkazilish joyi: <strong>{ev.location}</strong></div>
-                        {deadlineInfo && (
-                          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60 mt-1">
-                            <span
-                              className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
-                                deadlineInfo.isExpired
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : deadlineInfo.daysLeft <= 3
-                                  ? 'bg-amber-100 text-amber-900 font-extrabold'
-                                  : 'bg-blue-100 text-blue-900'
-                              }`}
-                            >
-                              {deadlineInfo.isExpired ? (
-                                '🔴 Ariza topshirish yakunlangan'
-                              ) : (
-                                `⏳ ${deadlineInfo.daysLeft === 0 ? 'Bugun oxirgi kun!' : `${deadlineInfo.daysLeft} kun qoldi`}`
-                              )}
-                            </span>
-                            <span className="text-[11px] text-slate-400">({deadlineInfo.formatted})</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between">
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {paginatedEvents.map(ev => {
+                  const deadlineInfo = ev.deadline ? getDeadlineInfo(ev.deadline) : null;
+                  return (
+                    <div
+                      key={ev.id}
+                      className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:border-blue-200 transition-all"
+                    >
                       <div>
-                        {ev.status && (
-                          <span className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-md">
-                            {ev.status}
-                          </span>
-                        )}
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h3 className="text-base font-bold text-slate-900">{ev.title}</h3>
+                          <button
+                            type="button"
+                            id={`event-participants-btn-${ev.id}`}
+                            onClick={() => onOpenEventParticipants?.(ev)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 transition-all cursor-pointer shadow-2xs hover:shadow-xs group shrink-0"
+                            title="Ushbu tadbir ishtirokchilari ro‘yxatini ko‘rish"
+                          >
+                            <Users className="w-3.5 h-3.5 text-blue-700 group-hover:scale-110 transition-transform" />
+                            <span>{ev.participantIds?.length || 0} ishtirokchi</span>
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-slate-600 mb-3 line-clamp-3">{ev.description}</p>
+
+                        <div className="space-y-1.5 text-xs text-slate-500 bg-slate-50 p-3 rounded-xl">
+                          <div>Sana va vaqt: <strong>{ev.date} ({ev.time})</strong></div>
+                          <div>O‘tkazilish joyi: <strong>{ev.location}</strong></div>
+                          {deadlineInfo && (
+                            <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-200/60 mt-1">
+                              <span
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                  deadlineInfo.isExpired
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : deadlineInfo.daysLeft <= 3
+                                    ? 'bg-amber-100 text-amber-900 font-extrabold'
+                                    : 'bg-blue-100 text-blue-900'
+                                }`}
+                              >
+                                {deadlineInfo.isExpired ? (
+                                  '🔴 Ariza topshirish yakunlangan'
+                                ) : (
+                                  `⏳ ${deadlineInfo.daysLeft === 0 ? 'Bugun oxirgi kun!' : `${deadlineInfo.daysLeft} kun qoldi`}`
+                                )}
+                              </span>
+                              <span className="text-[11px] text-slate-400">({deadlineInfo.formatted})</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        {hasPermission(currentUser, 'events', 'edit') && (
-                          <button
-                            onClick={() => handleOpenEditEvent(ev)}
-                            className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                            title="Tadbirni tahrirlash"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                        )}
-                        {hasPermission(currentUser, 'events', 'delete') && (
-                          <button
-                            onClick={() => {
-                              onConfirmModal({
-                                title: "Tadbirni o'chirish",
-                                message: `«${ev.title}» tadbirini o'chirishni tasdiqlaysizmi?`,
-                                confirmText: "Ha, o'chirish",
-                                isDestructive: true,
-                                onConfirm: async () => {
-                                  await deleteEventDoc(ev.id, currentUser.id, currentUser.fullName);
-                                  onNotify('success', "Tadbir o'chirildi.");
-                                },
-                              });
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="O‘chirish"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
+
+                      <div className="pt-3 border-t border-slate-100 mt-4 flex items-center justify-between">
+                        <div>
+                          {ev.status && (
+                            <span className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 text-slate-700 rounded-md">
+                              {ev.status}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {hasPermission(currentUser, 'events', 'edit') && (
+                            <button
+                              onClick={() => handleOpenEditEvent(ev)}
+                              className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              title="Tadbirni tahrirlash"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                          )}
+                          {hasPermission(currentUser, 'events', 'delete') && (
+                            <button
+                              onClick={() => {
+                                onConfirmModal({
+                                  title: "Tadbirni o'chirish",
+                                  message: `«${ev.title}» tadbirini o'chirishni tasdiqlaysizmi?`,
+                                  confirmText: "Ha, o'chirish",
+                                  isDestructive: true,
+                                  onConfirm: async () => {
+                                    await deleteEventDoc(ev.id, currentUser.id, currentUser.fullName);
+                                    onNotify('success', "Tadbir o'chirildi.");
+                                  },
+                                });
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="O‘chirish"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-500 font-medium">
+                  Ko‘rsatilmoqda: <span className="font-bold text-slate-800">{(eventCurrentPage - 1) * EVENTS_PAGE_SIZE + 1}–{Math.min(eventCurrentPage * EVENTS_PAGE_SIZE, filteredAndSortedEvents.length)}</span> (Jami: <span className="font-bold text-slate-800">{filteredAndSortedEvents.length}</span> ta)
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setEventCurrentPage(1)}
+                    disabled={eventCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEventCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={eventCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {eventCurrentPage} / {totalEventPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setEventCurrentPage(p => Math.min(totalEventPages, p + 1))}
+                    disabled={eventCurrentPage >= totalEventPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -2927,11 +3810,25 @@ export const AdminDashboard: React.FC<Props> = ({
       {/* TAB 8: ANNOUNCEMENTS */}
       {activeTab === 'announcements' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">E'lonlar markazi</h2>
-              <p className="text-xs text-slate-500">Talabalar va ilmiy rahbarlar uchun tezkor xabarnomalar berish.</p>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">E'lonlar markazi</h2>
+                <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
+                  Jami: {announcements.length} ta
+                </span>
+                {filteredAndSortedAnnouncements.length !== announcements.length && (
+                  <span className="px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredAndSortedAnnouncements.length} ta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Talabalar va ilmiy rahbarlar uchun tezkor xabarnomalar va muhim e'lonlarni boshqarish.
+              </p>
             </div>
+
             {hasPermission(currentUser, 'announcements', 'create') && (
               <button
                 onClick={() => setIsAnnModalOpen(true)}
@@ -2943,67 +3840,180 @@ export const AdminDashboard: React.FC<Props> = ({
             )}
           </div>
 
-          {announcements.length === 0 ? (
+          {/* Search, Sort and Filter Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="E'lon sarlavhasi yoki matni bo‘yicha qidirish..."
+                value={announcementSearch}
+                onChange={e => {
+                  setAnnouncementSearch(e.target.value);
+                  setAnnouncementCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Audience Filter */}
+              <select
+                value={announcementAudienceFilter}
+                onChange={e => {
+                  setAnnouncementAudienceFilter(e.target.value);
+                  setAnnouncementCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha auditoriyalar</option>
+                <option value="Barchaga">Barchaga</option>
+                <option value="Talabalarga">Talabalarga</option>
+                <option value="Ilmiy rahbarlarga">Ilmiy rahbarlarga</option>
+              </select>
+
+              {/* Sort Order */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 border border-slate-200 rounded-xl">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-1" />
+                <select
+                  value={announcementSort}
+                  onChange={e => setAnnouncementSort(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-700 py-1 pr-2 focus:outline-none cursor-pointer"
+                >
+                  <option value="newest">Yangi e‘lonlar</option>
+                  <option value="oldest">Eski e‘lonlar</option>
+                  <option value="title_asc">Sarlavha (A–Z)</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(announcementSearch || announcementAudienceFilter !== 'all' || announcementSort !== 'newest') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnnouncementSearch('');
+                    setAnnouncementAudienceFilter('all');
+                    setAnnouncementSort('newest');
+                    setAnnouncementCurrentPage(1);
+                  }}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Barcha filtrlarni tozalash"
+                >
+                  Tozalash
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {filteredAndSortedAnnouncements.length === 0 ? (
             <EmptyState
-              title="E'lonlar yo‘q"
-              description="Hozircha birorta ham e'lon chiqarilmagan."
+              title="E'lonlar topilmadi"
+              description={
+                announcementSearch || announcementAudienceFilter !== 'all'
+                  ? "Kiritilgan qidiruv yoki filtr mezonlariga mos e'lonlar mavjud emas."
+                  : "Hozircha birorta ham e'lon chiqarilmagan."
+              }
               action={hasPermission(currentUser, 'announcements', 'create') ? {
                 label: "E'lon berish",
                 onClick: () => setIsAnnModalOpen(true),
               } : undefined}
             />
           ) : (
-            <div className="space-y-3">
-              {announcements.map(ann => (
-                <div key={ann.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-900 rounded-md">
-                          {ann.audience}
-                        </span>
-                        <span className="text-xs text-slate-400">{ann.date}</span>
+            <>
+              <div className="space-y-3">
+                {paginatedAnnouncements.map(ann => (
+                  <div key={ann.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs hover:border-blue-200 transition-all">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-900 rounded-md">
+                            {ann.audience}
+                          </span>
+                          <span className="text-xs text-slate-400">{ann.date}</span>
+                        </div>
+                        <h3 className="text-base font-bold text-slate-900 mt-1">{ann.title}</h3>
                       </div>
-                      <h3 className="text-base font-bold text-slate-900 mt-1">{ann.title}</h3>
+
+                      <div className="flex items-center gap-1">
+                        {hasPermission(currentUser, 'announcements', 'edit') && (
+                          <button
+                            onClick={() => handleOpenEditAnn(ann)}
+                            className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                            title="E'lonni tahrirlash"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                        )}
+                        {hasPermission(currentUser, 'announcements', 'delete') && (
+                          <button
+                            onClick={() => {
+                              onConfirmModal({
+                                title: "E'lonni o'chirish",
+                                message: `«${ann.title}» e'lonini o'chirishni tasdiqlaysizmi?`,
+                                confirmText: "Ha, o'chirish",
+                                isDestructive: true,
+                                onConfirm: async () => {
+                                  await deleteAnnouncementDoc(ann.id, currentUser.id, currentUser.fullName);
+                                  onNotify('success', "E'lon o'chirildi.");
+                                },
+                              });
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="O‘chirish"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1">
-                      {hasPermission(currentUser, 'announcements', 'edit') && (
-                        <button
-                          onClick={() => handleOpenEditAnn(ann)}
-                          className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
-                          title="E'lonni tahrirlash"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      )}
-                      {hasPermission(currentUser, 'announcements', 'delete') && (
-                        <button
-                          onClick={() => {
-                            onConfirmModal({
-                              title: "E'lonni o'chirish",
-                              message: `«${ann.title}» e'lonini o'chirishni tasdiqlaysizmi?`,
-                              confirmText: "Ha, o'chirish",
-                              isDestructive: true,
-                              onConfirm: async () => {
-                                await deleteAnnouncementDoc(ann.id, currentUser.id, currentUser.fullName);
-                                onNotify('success', "E'lon o'chirildi.");
-                              },
-                            });
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title="O‘chirish"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+                    <p className="text-xs sm:text-sm text-slate-700 whitespace-pre-line leading-relaxed">{ann.content}</p>
                   </div>
+                ))}
+              </div>
 
-                  <p className="text-xs sm:text-sm text-slate-700 whitespace-pre-line leading-relaxed">{ann.content}</p>
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-500 font-medium">
+                  Ko‘rsatilmoqda: <span className="font-bold text-slate-800">{(announcementCurrentPage - 1) * ANNOUNCEMENTS_PAGE_SIZE + 1}–{Math.min(announcementCurrentPage * ANNOUNCEMENTS_PAGE_SIZE, filteredAndSortedAnnouncements.length)}</span> (Jami: <span className="font-bold text-slate-800">{filteredAndSortedAnnouncements.length}</span> ta)
                 </div>
-              ))}
-            </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setAnnouncementCurrentPage(1)}
+                    disabled={announcementCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnnouncementCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={announcementCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {announcementCurrentPage} / {totalAnnPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setAnnouncementCurrentPage(p => Math.min(totalAnnPages, p + 1))}
+                    disabled={announcementCurrentPage >= totalAnnPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
           )}
         </div>
       )}

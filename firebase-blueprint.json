@@ -143,6 +143,39 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["userId"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Rasmiy e'lonlar va yangiliklar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "date": { "type": "string" },
+        "audience": { "type": "string" },
+        "author": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "date", "audience"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Tizim harakatlari va xavfsizlik audit jurnali",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actorName": { "type": "string" },
+        "actorRole": { "type": "string" },
+        "action": { "type": "string" },
+        "entityType": { "type": "string" },
+        "entityId": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["id", "actorId", "actorName", "action", "timestamp"]
     }
   },
   "firestore": {
@@ -181,6 +214,14 @@
     "/certificates/{certificateId}": {
       "schema": "CertificateItem",
       "description": "Sertifikatlar"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "Announcement",
+      "description": "E'lonlar"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Audit jurnali yozuvlari"
     }
   }
 }

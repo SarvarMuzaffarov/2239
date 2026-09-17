@@ -6,6 +6,7 @@ import {
   getDocs,
   updateDoc,
   deleteDoc,
+  writeBatch,
   query,
   where,
   orderBy,
@@ -120,7 +121,7 @@ export function subscribeStudents(onUpdate: (students: StudentProfile[]) => void
         list.push({ id: docSnap.id, ...docSnap.data() } as StudentProfile);
       });
       // Sort by name
-      list.sort((a, b) => a.fullName.localeCompare(b.fullName));
+      list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
       onUpdate(list);
     },
     error => {
@@ -143,10 +144,11 @@ export async function updateStudentProfile(
   }
 
   const ref = doc(db, 'students', studentId);
-  await updateDoc(ref, {
+  const cleanedUpdates = removeUndefinedFields({
     ...safeUpdates,
     updatedAt: new Date().toISOString(),
   });
+  await updateDoc(ref, cleanedUpdates);
 
   if (actor) {
     await logAuditAction(
@@ -201,7 +203,7 @@ export function subscribeSupervisors(onUpdate: (supervisors: SupervisorProfile[]
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as SupervisorProfile);
       });
-      list.sort((a, b) => a.fullName.localeCompare(b.fullName));
+      list.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
       onUpdate(list);
     },
     error => {
@@ -238,10 +240,11 @@ export async function updateSupervisorDoc(
   actor: { id: string; fullName: string; role: UserRole }
 ) {
   const ref = doc(db, 'supervisors', id);
-  await updateDoc(ref, {
+  const cleanedUpdates = removeUndefinedFields({
     ...updates,
     updatedAt: new Date().toISOString(),
   });
+  await updateDoc(ref, cleanedUpdates);
   await logAuditAction(
     actor,
     "Ilmiy rahbarni tahrirlash",
@@ -274,7 +277,7 @@ export function subscribeProjectsAndStartups(
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as ProjectOrStartup);
       });
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -419,7 +422,7 @@ export function subscribeAchievements(onUpdate: (items: Achievement[]) => void):
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Achievement);
       });
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -545,7 +548,7 @@ export function subscribeCertificates(onUpdate: (items: CertificateItem[]) => vo
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as CertificateItem);
       });
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -706,7 +709,7 @@ export function subscribeEvents(onUpdate: (items: EventItem[]) => void): Unsubsc
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as EventItem);
       });
-      list.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      list.sort((a, b) => new Date(b.date || b.createdAt || 0).getTime() - new Date(a.date || a.createdAt || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -909,7 +912,7 @@ export function subscribeEventRegistrations(
         list.push({ id: d.id, ...d.data() } as EventRegistration);
       });
       // Sort newest first
-      list.sort((a, b) => new Date(b.registeredAt).getTime() - new Date(a.registeredAt).getTime());
+      list.sort((a, b) => new Date(b.registeredAt || 0).getTime() - new Date(a.registeredAt || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -996,7 +999,7 @@ export function subscribeAnnouncements(onUpdate: (items: Announcement[]) => void
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
       });
-      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -1183,7 +1186,7 @@ export function subscribeAuditLogs(onUpdate: (logs: AuditLog[]) => void): Unsubs
       snapshot.forEach(docSnap => {
         list.push({ id: docSnap.id, ...docSnap.data() } as AuditLog);
       });
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      list.sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
       onUpdate(list);
     },
     error => {
@@ -2060,7 +2063,7 @@ export async function restoreDocument(
 }
 
 /**
- * Permanent delete: Super Admin only!
+ * Permanent delete: Super Admin or Admin
  */
 export async function permanentDeleteDocument(
   collectionName: string,
@@ -2068,8 +2071,8 @@ export async function permanentDeleteDocument(
   entityLabel: string,
   actor: { id: string; fullName: string; role: UserRole }
 ): Promise<void> {
-  if (actor.role !== 'superAdmin') {
-    throw new Error("Faqat Super Admin butunlay o'chira oladi!");
+  if (actor.role !== 'superAdmin' && actor.role !== 'admin') {
+    throw new Error("Faqat Super Admin yoki Admin butunlay o'chira oladi!");
   }
 
   const ref = doc(db, collectionName, id);
@@ -2086,6 +2089,105 @@ export async function permanentDeleteDocument(
     id,
     `${entityLabel} bazadan butunlay tozalandi.`
   );
+}
+
+/**
+ * Permanently purges multiple or all soft-deleted documents from Firestore.
+ * Handles students, supervisors, projects, certificates, achievements, events, announcements, users.
+ * Uses writeBatch with chunking for high performance and atomicity.
+ */
+export async function emptyTrashPermanently(
+  items: { collectionName: string; id: string; categoryLabel?: string; title?: string }[],
+  actor: { id: string; fullName: string; role: UserRole },
+  scopeDescription: string = "Chiqindilar qutisi butunlay bo'shatildi"
+): Promise<{ deletedCount: number }> {
+  if (actor.role !== 'superAdmin' && actor.role !== 'admin') {
+    throw new Error("Faqat Super Admin yoki Admin chiqindi qutisini bo'shata oladi!");
+  }
+
+  if (!items || items.length === 0) {
+    return { deletedCount: 0 };
+  }
+
+  // Filter out actor's own user record to prevent accidental self-deletion
+  const safeItems = items.filter(
+    item => !(item.collectionName === 'users' && item.id === actor.id)
+  );
+
+  let deletedCount = 0;
+  const CHUNK_SIZE = 300; // Well below 500 limit for Firestore writeBatch
+
+  for (let i = 0; i < safeItems.length; i += CHUNK_SIZE) {
+    const chunk = safeItems.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+
+    for (const item of chunk) {
+      const docRef = doc(db, item.collectionName, item.id);
+      batch.delete(docRef);
+    }
+
+    await withFirestoreTimeout(
+      batch.commit(),
+      25000,
+      "Chiqindilarni butunlay tozalashda xatolik yuz berdi."
+    );
+    deletedCount += chunk.length;
+  }
+
+  await logAuditAction(
+    actor,
+    "Chiqindilar qutisi butunlay bo'shatildi (Purge All Trash)",
+    'trash',
+    'bulk_purge',
+    `${scopeDescription}. Jami ${deletedCount} ta yozuv Firestore bazasidan butunlay tozalandi.`
+  );
+
+  return { deletedCount };
+}
+
+/**
+ * Recovers multiple soft-deleted documents from trash in batch.
+ */
+export async function restoreDocumentsBatch(
+  items: { collectionName: string; id: string; categoryLabel?: string; title?: string }[],
+  actor: { id: string; fullName: string; role: UserRole }
+): Promise<{ restoredCount: number }> {
+  if (!items || items.length === 0) return { restoredCount: 0 };
+  const now = new Date().toISOString();
+  let restoredCount = 0;
+  const CHUNK_SIZE = 300;
+
+  for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+    const chunk = items.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+
+    for (const item of chunk) {
+      const docRef = doc(db, item.collectionName, item.id);
+      batch.update(docRef, {
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: now,
+      });
+    }
+
+    await withFirestoreTimeout(
+      batch.commit(),
+      25000,
+      "Hujjatlarni ommaviy qayta tiklashda xatolik yuz berdi."
+    );
+    restoredCount += chunk.length;
+  }
+
+  await logAuditAction(
+    actor,
+    "Chiqindilar qutisidan ommaviy tiklandi",
+    'trash',
+    'bulk_restore',
+    `Jami ${restoredCount} ta yozuv chiqindilar qutisidan qayta tiklandi.`
+  );
+
+  return { restoredCount };
 }
 
 /**
