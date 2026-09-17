@@ -1028,90 +1028,86 @@ function drawSignatoryBlock(
 
 /**
  * Authentic Hand-drawn Fountain Pen Ink Signature of Director Xakimov Zafar Tulyaganovich
- * 100% replica of the director's handwritten signature with authentic ink shade, spires, and sweeping underline
+ * 100% exact replica of the director's handwritten signature with authentic ink shade, spires, and sweeping underline
  */
 function drawArtisticSignature(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
   ctx.save();
 
-  const inkColor = '#1e40af'; // Authentic deep royal blue fountain pen ink
+  const inkColor = '#1d4ed8'; // Authentic royal blue fountain pen ink
   ctx.strokeStyle = inkColor;
   ctx.fillStyle = inkColor;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  const scale = 1.05;
-  const mapX = (x: number) => cx + (x - 220) * scale;
-  const mapY = (y: number) => cy + (y - 110) * scale;
+  const scale = 1.0;
+  const mapX = (x: number) => cx + (x - 238) * scale;
+  const mapY = (y: number) => cy + (y - 121) * scale;
 
-  // 1. Left upward slash starting from bottom-left up to Spire 1
-  ctx.lineWidth = 3.6;
+  // 1. Left teardrop lobe/loop of initial letter 'X'
+  ctx.lineWidth = 3.5;
   ctx.beginPath();
-  ctx.moveTo(mapX(25), mapY(210));
-  ctx.bezierCurveTo(mapX(65), mapY(160), mapX(120), mapY(95), mapX(182), mapY(38));
+  ctx.moveTo(mapX(190), mapY(48));
+  ctx.bezierCurveTo(mapX(172), mapY(88), mapX(142), mapY(140), mapX(134), mapY(168));
+  ctx.bezierCurveTo(mapX(126), mapY(190), mapX(144), mapY(198), mapX(160), mapY(186));
+  ctx.bezierCurveTo(mapX(178), mapY(172), mapX(202), mapY(136), mapX(222), mapY(102));
   ctx.stroke();
 
-  // 2. Spire 1 peak, acute turnaround, and lower-left teardrop loop
-  ctx.lineWidth = 3.4;
-  ctx.beginPath();
-  ctx.moveTo(mapX(182), mapY(38));
-  ctx.bezierCurveTo(mapX(185), mapY(35), mapX(189), mapY(38), mapX(186), mapY(46));
-  ctx.lineTo(mapX(128), mapY(135));
-  ctx.bezierCurveTo(mapX(118), mapY(152), mapX(102), mapY(178), mapX(106), mapY(188));
-  ctx.bezierCurveTo(mapX(110), mapY(196), mapX(126), mapY(195), mapX(142), mapY(182));
-  ctx.bezierCurveTo(mapX(160), mapY(168), mapX(182), mapY(138), mapX(204), mapY(105));
-  ctx.stroke();
-
-  // 3. Spire 2 (Highest central peak) with rightward tip hook and straight descent
-  ctx.lineWidth = 3.6;
-  ctx.beginPath();
-  ctx.moveTo(mapX(204), mapY(105));
-  ctx.bezierCurveTo(mapX(218), mapY(80), mapX(235), mapY(32), mapX(245), mapY(14));
-  ctx.bezierCurveTo(mapX(249), mapY(8), mapX(256), mapY(10), mapX(255), mapY(18));
-  ctx.bezierCurveTo(mapX(254), mapY(24), mapX(250), mapY(32), mapX(248), mapY(42));
-  ctx.lineTo(mapX(238), mapY(128));
-  ctx.stroke();
-
-  // 4. Upright vertical loop (oval head)
-  ctx.lineWidth = 3.0;
-  ctx.beginPath();
-  ctx.moveTo(mapX(238), mapY(128));
-  ctx.bezierCurveTo(mapX(236), mapY(105), mapX(246), mapY(80), mapX(254), mapY(78));
-  ctx.bezierCurveTo(mapX(260), mapY(76), mapX(264), mapY(85), mapX(261), mapY(102));
-  ctx.bezierCurveTo(mapX(257), mapY(118), mapX(250), mapY(135), mapX(246), mapY(142));
-  ctx.stroke();
-
-  // 5. Cursive wave body oscillations
-  ctx.lineWidth = 3.2;
-  ctx.beginPath();
-  ctx.moveTo(mapX(246), mapY(142));
-  ctx.bezierCurveTo(mapX(252), mapY(132), mapX(260), mapY(130), mapX(268), mapY(142));
-  ctx.bezierCurveTo(mapX(274), mapY(132), mapX(282), mapY(130), mapX(290), mapY(142));
-  ctx.bezierCurveTo(mapX(296), mapY(132), mapX(304), mapY(130), mapX(312), mapY(142));
-  ctx.bezierCurveTo(mapX(318), mapY(132), mapX(326), mapY(130), mapX(334), mapY(142));
-  ctx.stroke();
-
-  // 6. Right ascender rise and descent
-  ctx.lineWidth = 3.4;
-  ctx.beginPath();
-  ctx.moveTo(mapX(334), mapY(142));
-  ctx.bezierCurveTo(mapX(346), mapY(115), mapX(362), mapY(72), mapX(372), mapY(65));
-  ctx.bezierCurveTo(mapX(376), mapY(62), mapX(378), mapY(68), mapX(375), mapY(78));
-  ctx.lineTo(mapX(365), mapY(148));
-  ctx.stroke();
-
-  // 7. Right acute point/beak and long sweeping backward underline stroke
+  // 2. The grand unbroken diagonal slash from bottom-left to top highest spire
   ctx.lineWidth = 3.8;
   ctx.beginPath();
-  ctx.moveTo(mapX(365), mapY(148));
-  ctx.lineTo(mapX(408), mapY(145));
-  ctx.bezierCurveTo(mapX(412), mapY(145), mapX(414), mapY(148), mapX(410), mapY(152));
-  ctx.bezierCurveTo(mapX(350), mapY(162), mapX(230), mapY(185), mapX(80), mapY(206));
-  ctx.lineTo(mapX(35), mapY(210));
+  ctx.moveTo(mapX(18), mapY(224));
+  ctx.bezierCurveTo(mapX(80), mapY(180), mapX(162), mapY(114), mapX(268), mapY(18));
   ctx.stroke();
 
-  // 8. Authentic right-side ink dot
+  // 3. Top highest spire needle apex and downward crossing stroke of 'X'
+  ctx.lineWidth = 3.6;
   ctx.beginPath();
-  ctx.arc(mapX(418), mapY(92), 2.5, 0, Math.PI * 2);
+  ctx.moveTo(mapX(268), mapY(18));
+  ctx.bezierCurveTo(mapX(272), mapY(12), mapX(278), mapY(14), mapX(276), mapY(22));
+  ctx.bezierCurveTo(mapX(270), mapY(52), mapX(258), mapY(92), mapX(246), mapY(130));
+  ctx.stroke();
+
+  // 4. Upright vertical oval loop
+  ctx.lineWidth = 3.2;
+  ctx.beginPath();
+  ctx.moveTo(mapX(246), mapY(130));
+  ctx.bezierCurveTo(mapX(242), mapY(104), mapX(252), mapY(76), mapX(264), mapY(72));
+  ctx.bezierCurveTo(mapX(272), mapY(70), mapX(278), mapY(80), mapX(274), mapY(100));
+  ctx.bezierCurveTo(mapX(270), mapY(118), mapX(260), mapY(138), mapX(256), mapY(148));
+  ctx.stroke();
+
+  // 5. Connected cursive body waves
+  ctx.lineWidth = 3.3;
+  ctx.beginPath();
+  ctx.moveTo(mapX(256), mapY(148));
+  ctx.bezierCurveTo(mapX(264), mapY(135), mapX(274), mapY(133), mapX(284), mapY(147));
+  ctx.bezierCurveTo(mapX(292), mapY(135), mapX(302), mapY(133), mapX(312), mapY(147));
+  ctx.bezierCurveTo(mapX(320), mapY(135), mapX(330), mapY(133), mapX(340), mapY(147));
+  ctx.bezierCurveTo(mapX(348), mapY(135), mapX(356), mapY(135), mapX(364), mapY(148));
+  ctx.stroke();
+
+  // 6. Tall right ascender loop
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(mapX(364), mapY(148));
+  ctx.bezierCurveTo(mapX(374), mapY(108), mapX(388), mapY(50), mapX(396), mapY(32));
+  ctx.bezierCurveTo(mapX(400), mapY(24), mapX(404), mapY(28), mapX(400), mapY(40));
+  ctx.lineTo(mapX(388), mapY(156));
+  ctx.stroke();
+
+  // 7. Sharp rightward beak and sweeping underline flourish back to the start
+  ctx.lineWidth = 3.8;
+  ctx.beginPath();
+  ctx.moveTo(mapX(388), mapY(156));
+  ctx.lineTo(mapX(442), mapY(152));
+  ctx.bezierCurveTo(mapX(448), mapY(152), mapX(450), mapY(156), mapX(444), mapY(160));
+  ctx.bezierCurveTo(mapX(370), mapY(172), mapX(235), mapY(198), mapX(90), mapY(220));
+  ctx.lineTo(mapX(18), mapY(224));
+  ctx.stroke();
+
+  // 8. Distinct signature dot on the right
+  ctx.beginPath();
+  ctx.arc(mapX(458), mapY(88), 2.8, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.restore();

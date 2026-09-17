@@ -1,27 +1,27 @@
-<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 450 220' width='450' height='220' fill='none'>
-  <g stroke='#1e40af' stroke-linecap='round' stroke-linejoin='round'>
-    <!-- 1. Left upward slash starting from bottom-left up to Spire 1 -->
-    <path d='M 25 210 C 65 160, 120 95, 182 38' stroke-width='3.6' />
-    
-    <!-- 2. Spire 1 peak, acute turnaround, and lower-left teardrop loop -->
-    <path d='M 182 38 C 185 35, 189 38, 186 46 L 128 135 C 118 152, 102 178, 106 188 C 110 196, 126 195, 142 182 C 160 168, 182 138, 204 105' stroke-width='3.4' />
-    
-    <!-- 3. Spire 2 (Highest central peak) with rightward tip hook and straight descent -->
-    <path d='M 204 105 C 218 80, 235 32, 245 14 C 249 8, 256 10, 255 18 C 254 24, 250 32, 248 42 L 238 128' stroke-width='3.6' />
-    
-    <!-- 4. Upright vertical loop (oval head) -->
-    <path d='M 238 128 C 236 105, 246 80, 254 78 C 260 76, 264 85, 261 102 C 257 118, 250 135, 246 142' stroke-width='3.0' />
-    
-    <!-- 5. Cursive wave body oscillations -->
-    <path d='M 246 142 C 252 132, 260 130, 268 142 C 274 132, 282 130, 290 142 C 296 132, 304 130, 312 142 C 318 132, 326 130, 334 142' stroke-width='3.2' />
-    
-    <!-- 6. Right ascender rise and descent -->
-    <path d='M 334 142 C 346 115, 362 72, 372 65 C 376 62, 378 68, 375 78 L 365 148' stroke-width='3.4' />
-    
-    <!-- 7. Right acute point/beak and long sweeping backward underline stroke -->
-    <path d='M 365 148 L 408 145 C 412 145, 414 148, 410 152 C 350 162, 230 185, 80 206 L 35 210' stroke-width='3.8' />
-    
-    <!-- 8. Authentic right-side ink dot -->
-    <circle cx='418' cy='92' r='2.5' fill='#1e40af' />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 240" width="480" height="240" fill="none">
+  <g stroke="#1d4ed8" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 1. Left teardrop lobe/loop of the initial letter 'X' -->
+    <path d="M 190 48 C 172 88, 142 140, 134 168 C 126 190, 144 198, 160 186 C 178 172, 202 136, 222 102" stroke-width="3.4" />
+
+    <!-- 2. The grand unbroken diagonal slash from bottom-left to top highest spire -->
+    <path d="M 18 224 C 80 180, 162 114, 268 18" stroke-width="3.8" />
+
+    <!-- 3. Top highest spire needle apex and downward crossing stroke of 'X' -->
+    <path d="M 268 18 C 272 12, 278 14, 276 22 C 270 52, 258 92, 246 130" stroke-width="3.6" />
+
+    <!-- 4. Upright vertical oval loop -->
+    <path d="M 246 130 C 242 104, 252 76, 264 72 C 272 70, 278 80, 274 100 C 270 118, 260 138, 256 148" stroke-width="3.2" />
+
+    <!-- 5. Connected cursive body waves -->
+    <path d="M 256 148 C 264 135, 274 133, 284 147 C 292 135, 302 133, 312 147 C 320 135, 330 133, 340 147 C 348 135, 356 135, 364 148" stroke-width="3.3" />
+
+    <!-- 6. Tall right ascender loop -->
+    <path d="M 364 148 C 374 108, 388 50, 396 32 C 400 24, 404 28, 400 40 L 388 156" stroke-width="3.5" />
+
+    <!-- 7. Sharp rightward beak and sweeping underline flourish back to the start -->
+    <path d="M 388 156 L 442 152 C 448 152, 450 156, 444 160 C 370 172, 235 198, 90 220 L 18 224" stroke-width="3.8" />
+
+    <!-- 8. Distinct signature dot on the right -->
+    <circle cx="458" cy="88" r="2.8" fill="#1d4ed8" />
   </g>
 </svg>
