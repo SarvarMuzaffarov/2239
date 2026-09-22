@@ -1502,6 +1502,106 @@ export async function createOfficialCertificate(
 }
 
 /**
+ * Creates multiple official certificates or diplomas in Firestore using batch commits.
+ */
+export async function createOfficialCertificatesBatch(
+  items: Array<{
+    studentId: string;
+    studentName: string;
+    eventTitle: string;
+    title: string;
+    organizationName?: string;
+    issueDate: string;
+    certificateNumber?: string;
+    documentType?: 'diplom' | 'sertifikat';
+    subtitle?: string;
+    presentedToText?: string;
+    description?: string;
+    competitionName?: string;
+    nomination?: string;
+    additionalNote?: string;
+    confirmationText?: string;
+    decisionNumber?: string;
+    awardLevel?: string;
+    signatoryDegree?: string;
+    verificationUrl?: string;
+    footerText?: string;
+    additionalSignatureText?: string;
+    signatoryName?: string;
+    signatoryRole?: string;
+    studentDirection?: string;
+  }>,
+  actorId: string,
+  actorName: string
+): Promise<CertificateItem[]> {
+  if (!items || items.length === 0) return [];
+
+  const CHUNK_SIZE = 300;
+  const result: CertificateItem[] = [];
+
+  for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+    const chunk = items.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+
+    for (const data of chunk) {
+      const certNumber = data.certificateNumber?.trim() || `CERT-2026-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
+      const ref = doc(collection(db, 'certificates'));
+
+      const cert: CertificateItem = {
+        id: ref.id,
+        certificateNumber: certNumber,
+        title: data.title,
+        eventTitle: data.eventTitle,
+        studentId: data.studentId,
+        studentName: data.studentName,
+        organizationName: data.organizationName || 'Toshkent kimyo-texnologiya instituti Yangiyer filiali',
+        issueDate: data.issueDate,
+        status: 'Tasdiqlangan',
+        isOfficialGenerated: true,
+        createdAt: new Date().toISOString(),
+        ...(data.documentType ? { documentType: data.documentType } : {}),
+        ...(data.subtitle ? { subtitle: data.subtitle } : {}),
+        ...(data.presentedToText ? { presentedToText: data.presentedToText } : {}),
+        ...(data.description ? { description: data.description } : {}),
+        ...(data.competitionName ? { competitionName: data.competitionName } : {}),
+        ...(data.nomination ? { nomination: data.nomination } : {}),
+        ...(data.additionalNote ? { additionalNote: data.additionalNote } : {}),
+        ...(data.confirmationText ? { confirmationText: data.confirmationText } : {}),
+        ...(data.decisionNumber ? { decisionNumber: data.decisionNumber } : {}),
+        ...(data.awardLevel ? { awardLevel: data.awardLevel } : {}),
+        ...(data.signatoryDegree ? { signatoryDegree: data.signatoryDegree } : {}),
+        ...(data.verificationUrl ? { verificationUrl: data.verificationUrl } : {}),
+        ...(data.footerText ? { footerText: data.footerText } : {}),
+        ...(data.additionalSignatureText ? { additionalSignatureText: data.additionalSignatureText } : {}),
+        ...(data.signatoryName ? { signatoryName: data.signatoryName } : {}),
+        ...(data.signatoryRole ? { signatoryRole: data.signatoryRole } : {}),
+        ...(data.studentDirection ? { studentDirection: data.studentDirection } : {}),
+      };
+
+      batch.set(ref, cert);
+      result.push(cert);
+    }
+
+    await withFirestoreTimeout(
+      batch.commit(),
+      25000,
+      'Sertifikatlarni ommaviy saqlashda xatolik yuz berdi.'
+    );
+  }
+
+  const sampleDocType = items[0]?.documentType === 'diplom' ? 'diplom' : 'sertifikat';
+  await logAuditAction(
+    { id: actorId, fullName: actorName, role: 'admin' },
+    `Ommaviy ${sampleDocType}lar rasmiylashtirildi`,
+    'certificates',
+    'bulk_create',
+    `Jami ${result.length} ta rasmiy ${sampleDocType} yaratildi.`
+  );
+
+  return result;
+}
+
+/**
  * Admin updates student full profile, password and photoURL/avatarUrl
  */
 export async function updateStudentFullByAdmin(

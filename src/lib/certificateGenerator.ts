@@ -669,6 +669,52 @@ export async function downloadCertificatePdf(data: CertificateData, filename?: s
   URL.revokeObjectURL(url);
 }
 
+/**
+ * Trigger download of a consolidated multi-page A4 Landscape PDF for multiple certificates
+ */
+export async function downloadBulkCertificatesPdf(
+  certificatesData: CertificateData[],
+  filename?: string,
+  onProgress?: (current: number, total: number) => void
+): Promise<void> {
+  if (!certificatesData || certificatesData.length === 0) return;
+
+  if (certificatesData.length === 1) {
+    return downloadCertificatePdf(certificatesData[0], filename);
+  }
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const offscreenCanvas = document.createElement('canvas');
+
+  for (let i = 0; i < certificatesData.length; i++) {
+    const cert = certificatesData[i];
+    if (onProgress) onProgress(i + 1, certificatesData.length);
+    const pngDataUrl = await renderCertificateToCanvas(cert, offscreenCanvas);
+    if (i > 0) {
+      doc.addPage([297, 210], 'landscape');
+    }
+    doc.addImage(pngDataUrl, 'PNG', 0, 0, 297, 210, undefined, 'FAST');
+  }
+
+  const blob = doc.output('blob');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const prefix = certificatesData[0]?.documentType === 'sertifikat' ? 'Sertifikatlar' : 'Diplomlar';
+  a.download =
+    filename ||
+    `${prefix}_Jami_${certificatesData.length}_ta_${new Date().toISOString().split('T')[0]}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ----------------------------------------------------
 // VECTOR DRAWING HELPERS FOR CANVAS
 // ----------------------------------------------------

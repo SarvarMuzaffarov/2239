@@ -74,6 +74,7 @@ import {
   assignSupervisorToStudent,
   deleteStudentProfile,
   createOfficialCertificate,
+  createOfficialCertificatesBatch,
   deleteCertificateDoc,
   fetchStudentsPaginated,
   softDeleteDocument,
@@ -102,7 +103,7 @@ import {
   toggleUserBlockStatus,
   changeUserRole,
 } from '../services/authService';
-import { downloadCertificatePdf } from '../lib/certificateGenerator';
+import { downloadCertificatePdf, downloadBulkCertificatesPdf } from '../lib/certificateGenerator';
 import { formatUzbekPhone } from '../lib/crypto';
 import type {
   UserAccount,
@@ -1134,6 +1135,37 @@ export const AdminDashboard: React.FC<Props> = ({
       downloadCertificatePdf(newCert);
     } catch (err: any) {
       onNotify('error', err.message || "Sertifikat/diplom berishda xatolik.");
+    } finally {
+      setIsCertIssuing(false);
+    }
+  };
+
+  // Action: Issue bulk certificates/diplomas for groups, custom selection or all students
+  const handleIssueCertificatesBulk = async (certsData: Array<any>) => {
+    setIsCertIssuing(true);
+    try {
+      const newCerts = await createOfficialCertificatesBatch(
+        certsData,
+        currentUser.id,
+        currentUser.fullName
+      );
+
+      const typeLabel = certsData[0]?.documentType === 'diplom' ? 'Diplom' : 'Sertifikat';
+      onNotify(
+        'success',
+        `Jami ${newCerts.length} ta rasmiy ${typeLabel.toLowerCase()} muvaffaqiyatli rasmiylashtirildi va reestrga kiritildi!`
+      );
+      setIsCertIssueModalOpen(false);
+
+      // Trigger consolidated multi-page PDF generation & download
+      await downloadBulkCertificatesPdf(
+        certsData.map(c => ({
+          ...c,
+          verificationUrl: `${window.location.origin}/?verify=${encodeURIComponent(c.certificateNumber)}`,
+        }))
+      );
+    } catch (err: any) {
+      onNotify('error', err.message || "Ommaviy sertifikat/diplom berishda xatolik.");
     } finally {
       setIsCertIssuing(false);
     }
@@ -4274,6 +4306,7 @@ export const AdminDashboard: React.FC<Props> = ({
         students={students}
         currentUser={currentUser}
         onSubmit={handleIssueCertificate}
+        onSubmitBulk={handleIssueCertificatesBulk}
         isSubmitting={isCertIssuing}
       />
 
