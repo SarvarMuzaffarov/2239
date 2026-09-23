@@ -42,6 +42,7 @@ import {
   isValidUzbekPhone,
 } from '../lib/crypto';
 import { isValidDirection, canonicalizeDirection, getDirectionFilterVariants } from '../constants/directions';
+import { matchesStudentSearch } from '../lib/searchUtils';
 
 // Helper for timeout protection on async calls
 async function withFirestoreTimeout<T>(
@@ -1131,17 +1132,22 @@ export async function fetchStudentsPaginated(
     console.warn('Count aggregation notice, falling back:', err);
   }
 
-  // 2. Build paginated query with limit(20)
+  // 2. Build paginated query
+  const hasSearch = Boolean(options.searchQuery && options.searchQuery.trim());
   const queryConstraints: any[] = [
     ...constraints,
     orderBy('fullName', 'asc'),
   ];
 
-  if (options.startAfterDoc) {
-    queryConstraints.push(startAfter(options.startAfterDoc));
+  if (!hasSearch) {
+    if (options.startAfterDoc) {
+      queryConstraints.push(startAfter(options.startAfterDoc));
+    }
+    queryConstraints.push(limit(pageSize));
+  } else {
+    // When searching, fetch wider candidates so we don't truncate before filtering
+    queryConstraints.push(limit(1000));
   }
-
-  queryConstraints.push(limit(pageSize));
 
   const q = query(collection(db, 'students'), ...queryConstraints);
   const snap = await getDocs(q);
@@ -1150,22 +1156,18 @@ export async function fetchStudentsPaginated(
     .map(d => ({ id: d.id, ...d.data() } as StudentProfile))
     .filter(s => !s.isDeleted);
 
-  // If searchQuery provided, filter client-side within the targeted query window or adjust
-  const searchQ = (options.searchQuery || '').trim().toLowerCase();
-  if (searchQ) {
-    students = students.filter(s => {
-      const matchName = (s.fullName || '').toLowerCase().includes(searchQ);
-      const matchPhone = (s.phone || '').includes(searchQ);
-      const matchGroup = (s.group || '').toLowerCase().includes(searchQ);
-      const matchFaculty = (s.facultyOrField || '').toLowerCase().includes(searchQ);
-      const matchSupervisor = (s.customSupervisorName || '').toLowerCase().includes(searchQ);
-      return matchName || matchPhone || matchGroup || matchFaculty || matchSupervisor;
-    });
+  // If searchQuery provided, filter using smart Uzbek search matcher
+  if (hasSearch) {
+    const searchQ = options.searchQuery!.trim();
+    students = students.filter(s => matchesStudentSearch(s, searchQ));
+    totalCount = students.length;
+    // Slice according to pageSize
+    students = students.slice(0, pageSize);
   }
 
   const firstDoc = snap.docs.length > 0 ? snap.docs[0] : null;
   const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
-  const hasMore = snap.docs.length === pageSize;
+  const hasMore = hasSearch ? false : snap.docs.length === pageSize;
 
   return {
     students,

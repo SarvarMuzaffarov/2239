@@ -43,6 +43,7 @@ import {
   Ban,
   ArrowUpDown,
   SlidersHorizontal,
+  RotateCcw,
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { EditStudentModal } from './EditStudentModal';
@@ -105,6 +106,7 @@ import {
 } from '../services/authService';
 import { downloadCertificatePdf, downloadBulkCertificatesPdf } from '../lib/certificateGenerator';
 import { formatUzbekPhone } from '../lib/crypto';
+import { matchesStudentSearch } from '../lib/searchUtils';
 import type {
   UserAccount,
   StudentProfile,
@@ -375,16 +377,10 @@ export const AdminDashboard: React.FC<Props> = ({
   const [editingProject, setEditingProject] = useState<ProjectOrStartup | null>(null);
   const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
 
-  // Pagination & Debounced Search for Students
-  const [paginatedStudents, setPaginatedStudents] = useState<StudentProfile[]>([]);
-  const [studentsTotalCount, setStudentsTotalCount] = useState<number>(0);
-  const [isStudentsLoading, setIsStudentsLoading] = useState(false);
+  // Pagination & Filtering for Students
   const [currentPage, setCurrentPage] = useState(1);
   const [studentFacultyFilter, setStudentFacultyFilter] = useState('all');
   const [studentSupervisorFilter, setStudentSupervisorFilter] = useState('all');
-  const [pageCursors, setPageCursors] = useState<(any | null)[]>([null]);
-  const [hasNextPage, setHasNextPage] = useState(false);
-  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isExportingStudents, setIsExportingStudents] = useState(false);
   const [isExportingCompetitions, setIsExportingCompetitions] = useState(false);
   const [showAllDirectionsStats, setShowAllDirectionsStats] = useState(false);
@@ -557,57 +553,15 @@ export const AdminDashboard: React.FC<Props> = ({
     return filteredSupervisors.slice(start, start + SUPERVISOR_PAGE_SIZE);
   }, [filteredSupervisors, supervisorCurrentPage, SUPERVISOR_PAGE_SIZE]);
 
-  // Debounced search for student query
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedSearch(studentSearch.trim());
-      setCurrentPage(1);
-      setPageCursors([null]);
-    }, 350);
-    return () => clearTimeout(timer);
-  }, [studentSearch]);
-
-  // Reset pagination on filter change
+  // Reset student pagination on filter or search change
   useEffect(() => {
     setCurrentPage(1);
-    setPageCursors([null]);
-  }, [studentCourseFilter, studentFacultyFilter, studentSupervisorFilter]);
+  }, [studentSearch, studentCourseFilter, studentFacultyFilter, studentSupervisorFilter]);
 
-  // Fetch paginated students from Firestore
-  const fetchStudentsForPage = async (page: number, cursor: any | null) => {
-    setIsStudentsLoading(true);
-    try {
-      const res = await fetchStudentsPaginated({
-        pageSize: 20,
-        startAfterDoc: cursor,
-        courseFilter: studentCourseFilter,
-        facultyFilter: studentFacultyFilter,
-        supervisorFilter: studentSupervisorFilter,
-        searchQuery: debouncedSearch,
-      });
-      setPaginatedStudents(res.students);
-      setStudentsTotalCount(res.totalCount);
-      setHasNextPage(res.hasMore);
-
-      if (res.lastDoc) {
-        setPageCursors(prev => {
-          const nextStack = [...prev];
-          nextStack[page] = res.lastDoc;
-          return nextStack;
-        });
-      }
-    } catch (err) {
-      console.warn('Students page fetch notice:', err);
-    } finally {
-      setIsStudentsLoading(false);
-    }
+  // Compatibility helper for external refresh callbacks (e.g. TrashRecoveryView)
+  const fetchStudentsForPage = async (_page?: number, _cursor?: any) => {
+    // Real-time synchronization is handled automatically by subscribeStudents
   };
-
-  useEffect(() => {
-    if (activeTab === 'students') {
-      fetchStudentsForPage(currentPage, pageCursors[currentPage - 1] || null);
-    }
-  }, [activeTab, debouncedSearch, studentCourseFilter, studentFacultyFilter, studentSupervisorFilter, currentPage]);
 
   const handleOpenEditEvent = (ev: EventItem) => {
     setEditingEvent(ev);
@@ -719,20 +673,55 @@ export const AdminDashboard: React.FC<Props> = ({
     }
   };
 
-  // Filtered Students (fallback or for live count if needed)
-  const filteredStudents = students.filter(st => {
-    if (st.isDeleted) return false;
-    const q = (studentSearch || '').toLowerCase().trim();
-    const matchName =
-      !q ||
-      (st.fullName || '').toLowerCase().includes(q) ||
-      (st.phone || '').includes(q) ||
-      (st.group || '').toLowerCase().includes(q) ||
-      (st.facultyOrField || '').toLowerCase().includes(q) ||
-      canonicalizeDirection(st.facultyOrField).toLowerCase().includes(q);
-    const matchCourse = studentCourseFilter === 'all' || (st.course != null && st.course.toString() === studentCourseFilter);
-    return matchName && matchCourse;
-  });
+  // Filtered Students using smart Uzbek search & multi-criteria filters
+  const filteredStudents = useMemo(() => {
+    return students
+      .filter(st => !st.isDeleted)
+      .filter(st => {
+        // 1. Course filter
+        if (studentCourseFilter !== 'all') {
+          if (st.course != null && st.course.toString() !== studentCourseFilter) return false;
+        }
+
+        // 2. Faculty / Direction filter
+        if (studentFacultyFilter !== 'all') {
+          const canonicalFilter = canonicalizeDirection(studentFacultyFilter).toLowerCase();
+          const studentDir = (st.facultyOrField || '').toLowerCase();
+          const canonicalStudentDir = canonicalizeDirection(st.facultyOrField).toLowerCase();
+          if (studentDir !== studentFacultyFilter.toLowerCase() && canonicalStudentDir !== canonicalFilter) {
+            return false;
+          }
+        }
+
+        // 3. Supervisor filter
+        if (studentSupervisorFilter !== 'all') {
+          if (studentSupervisorFilter === 'unassigned') {
+            if (st.supervisorId) return false;
+          } else {
+            if (st.supervisorId !== studentSupervisorFilter) return false;
+          }
+        }
+
+        // 4. Smart search across name, surname, patronymic, phone, group, course, direction, supervisor
+        if (studentSearch && studentSearch.trim()) {
+          const supervisor = supervisors.find(s => s.id === st.supervisorId);
+          if (!matchesStudentSearch(st, studentSearch, supervisor?.fullName)) {
+            return false;
+          }
+        }
+
+        return true;
+      });
+  }, [students, studentSearch, studentCourseFilter, studentFacultyFilter, studentSupervisorFilter, supervisors]);
+
+  const STUDENT_PAGE_SIZE = 20;
+  const totalStudentPages = Math.max(1, Math.ceil(filteredStudents.length / STUDENT_PAGE_SIZE));
+  const validStudentCurrentPage = Math.min(Math.max(1, currentPage), totalStudentPages);
+
+  const paginatedStudents = useMemo(() => {
+    const start = (validStudentCurrentPage - 1) * STUDENT_PAGE_SIZE;
+    return filteredStudents.slice(start, start + STUDENT_PAGE_SIZE);
+  }, [filteredStudents, validStudentCurrentPage, STUDENT_PAGE_SIZE]);
 
   // Filtered & Sorted Projects
   const filteredAndSortedProjects = useMemo(() => {
@@ -1723,8 +1712,13 @@ export const AdminDashboard: React.FC<Props> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-900">Iqtidorli talabalar bazasi</h2>
                 <span className="px-2 py-0.5 text-xs font-bold bg-blue-100 text-blue-900 rounded-md">
-                  Jami: {studentsTotalCount || students.length} nafar
+                  Jami: {students.filter(s => !s.isDeleted).length} nafar
                 </span>
+                {filteredStudents.length !== students.filter(s => !s.isDeleted).length && (
+                  <span className="px-2 py-0.5 text-xs font-bold bg-emerald-100 text-emerald-900 rounded-md">
+                    Topildi: {filteredStudents.length} nafar
+                  </span>
+                )}
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
                 Talabalar ma’lumotlarini ko‘rish, tahrirlash, ilmiy rahbar biriktirish va Excel hisobotlarini yuklab olish.
@@ -1771,14 +1765,24 @@ export const AdminDashboard: React.FC<Props> = ({
           {/* Filters Bar */}
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
               <input
                 type="text"
-                placeholder="F.I.Sh, guruh, telefon yoki yo‘nalish bo‘yicha qidirish..."
+                placeholder="F.I.Sh, guruh, telefon yoki yo‘nalish bo‘yicha qidirish (masalan: Sarvar, 21-01)..."
                 value={studentSearch}
                 onChange={e => setStudentSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
               />
+              {studentSearch && (
+                <button
+                  type="button"
+                  onClick={() => setStudentSearch('')}
+                  className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 p-0.5 rounded-md hover:bg-slate-200/60 transition-colors cursor-pointer"
+                  title="Qidiruvni tozalash"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -1820,26 +1824,38 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Loading state or Empty state or Data view */}
-          {isStudentsLoading && paginatedStudents.length === 0 ? (
-            <div className="py-16 text-center space-y-3 bg-white rounded-2xl border border-slate-200">
-              <div className="w-8 h-8 border-3 border-blue-900 border-t-transparent rounded-full animate-spin mx-auto" />
-              <p className="text-xs font-semibold text-slate-500">Talabalar ro‘yxati yuklanmoqda...</p>
+          {/* Empty state or Data view */}
+          {filteredStudents.length === 0 ? (
+            <div className="py-14 px-4 text-center space-y-3 bg-white rounded-2xl border border-slate-200 shadow-xs">
+              <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400">
+                <Search className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Talaba topilmadi</h3>
+              <p className="text-xs text-slate-500 max-w-md mx-auto">
+                {studentSearch.trim()
+                  ? `«${studentSearch}» qidiruvi bo‘yicha hech qanday talaba ma’lumoti topilmadi. Talabaning ismi, familiyasi yoki telefon raqamini tekshirib ko‘ring.`
+                  : "Tanlangan filtrlar (kurs, yo‘nalish yoki ilmiy rahbar) bo‘yicha talabalar mavjud emas."}
+              </p>
+              {(studentSearch.trim() || studentCourseFilter !== 'all' || studentFacultyFilter !== 'all' || studentSupervisorFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStudentSearch('');
+                    setStudentCourseFilter('all');
+                    setStudentFacultyFilter('all');
+                    setStudentSupervisorFilter('all');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Filtrlarni tozalash</span>
+                </button>
+              )}
             </div>
-          ) : (paginatedStudents.length === 0 && !isStudentsLoading) ? (
-            <EmptyState
-              title="Talaba topilmadi"
-              description="Tanlangan qidiruv yoki filtr mezonlari bo‘yicha hech qanday talaba ma’lumoti topilmadi."
-            />
           ) : (
             <>
               {/* MOBILE CARD LIST (md:hidden) */}
               <div className="md:hidden space-y-3 relative">
-                {isStudentsLoading && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-xs flex items-center justify-center z-10 rounded-2xl">
-                    <div className="w-6 h-6 border-2 border-blue-900 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
                 {paginatedStudents.map(st => {
                   const sup = supervisors.find(s => s.id === st.supervisorId);
                   return (
@@ -1978,8 +1994,7 @@ export const AdminDashboard: React.FC<Props> = ({
                                 onConfirm: async () => {
                                   await deleteStudentProfile(st.id, currentUser, currentUser.fullName, st.userId);
                                   onNotify('success', "Talaba anketasi o'chirildi.");
-                                  // Refresh current page
-                                  fetchStudentsForPage(currentPage, pageCursors[currentPage - 1] || null);
+                                  fetchStudentsForPage();
                                 },
                               });
                             }}
@@ -1997,11 +2012,6 @@ export const AdminDashboard: React.FC<Props> = ({
 
               {/* DESKTOP TABLE VIEW (hidden md:block) */}
               <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs relative">
-                {isStudentsLoading && (
-                  <div className="absolute inset-0 bg-white/60 backdrop-blur-xs flex items-center justify-center z-10">
-                    <div className="w-6 h-6 border-2 border-blue-900 border-t-transparent rounded-full animate-spin" />
-                  </div>
-                )}
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[10px]">
@@ -2140,8 +2150,7 @@ export const AdminDashboard: React.FC<Props> = ({
                                         onConfirm: async () => {
                                           await deleteStudentProfile(st.id, currentUser, currentUser.fullName, st.userId);
                                           onNotify('success', "Talaba anketasi o'chirildi.");
-                                          // Refresh current page
-                                          fetchStudentsForPage(currentPage, pageCursors[currentPage - 1] || null);
+                                          fetchStudentsForPage();
                                         },
                                       });
                                     }}
@@ -2164,41 +2173,44 @@ export const AdminDashboard: React.FC<Props> = ({
               {/* Pagination Controls */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
                 <div className="text-slate-600 font-medium">
-                  Ko‘rsatilmoqda: <strong>{studentsTotalCount > 0 ? (currentPage - 1) * 20 + 1 : 0}–{Math.min(currentPage * 20, studentsTotalCount)}</strong> (Jami: <strong>{studentsTotalCount}</strong> ta talaba)
+                  Ko‘rsatilmoqda: <strong>{filteredStudents.length > 0 ? (validStudentCurrentPage - 1) * STUDENT_PAGE_SIZE + 1 : 0}–{Math.min(validStudentCurrentPage * STUDENT_PAGE_SIZE, filteredStudents.length)}</strong> (Jami: <strong>{filteredStudents.length}</strong> ta talaba{filteredStudents.length !== students.filter(s => !s.isDeleted).length ? ` filtrlangan, tizimda jami ${students.filter(s => !s.isDeleted).length} ta` : ''})
                 </div>
 
                 <div className="flex items-center gap-1.5">
                   <button
                     onClick={() => setCurrentPage(1)}
-                    disabled={currentPage <= 1 || isStudentsLoading}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors"
+                    disabled={validStudentCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
                   >
                     <span>Birinchi</span>
                   </button>
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage <= 1 || isStudentsLoading}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors"
+                    disabled={validStudentCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                     <span>Oldingi</span>
                   </button>
 
                   <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
-                    {currentPage}
+                    {validStudentCurrentPage} / {totalStudentPages}
                   </span>
 
                   <button
-                    onClick={() => {
-                      if (hasNextPage) {
-                        setCurrentPage(p => p + 1);
-                      }
-                    }}
-                    disabled={!hasNextPage || isStudentsLoading}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors"
+                    onClick={() => setCurrentPage(p => Math.min(totalStudentPages, p + 1))}
+                    disabled={validStudentCurrentPage >= totalStudentPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
                   >
                     <span>Keyingi</span>
                     <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalStudentPages)}
+                    disabled={validStudentCurrentPage >= totalStudentPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Oxirgi</span>
                   </button>
                 </div>
               </div>
@@ -4072,7 +4084,7 @@ export const AdminDashboard: React.FC<Props> = ({
           announcements={announcements}
           admins={allUsers.filter(u => u.role === 'admin' || u.role === 'superAdmin')}
           onRefresh={() => {
-            fetchStudentsForPage(currentPage, pageCursors[currentPage - 1] || null);
+            fetchStudentsForPage();
           }}
         />
       )}
