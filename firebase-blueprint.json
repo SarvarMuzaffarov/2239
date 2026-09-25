@@ -176,6 +176,27 @@
         "timestamp": { "type": "string" }
       },
       "required": ["id", "actorId", "actorName", "action", "timestamp"]
+    },
+    "LanguageCertificate": {
+      "title": "LanguageCertificate",
+      "description": "Xorijiy til sertifikatlari (IELTS, CEFR, TOEFL, va h.k.)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "language": { "type": "string" },
+        "certificateType": { "type": "string" },
+        "level": { "type": "string" },
+        "score": { "type": "string" },
+        "certificateNumber": { "type": "string" },
+        "issueDate": { "type": "string" },
+        "expiryDate": { "type": "string" },
+        "fileUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["Kutilmoqda", "Tasdiqlangan", "Rad etilgan"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "studentId", "studentName", "language", "certificateType", "level", "certificateNumber", "issueDate", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -214,6 +235,10 @@
     "/certificates/{certificateId}": {
       "schema": "CertificateItem",
       "description": "Sertifikatlar"
+    },
+    "/languageCertificates/{certId}": {
+      "schema": "LanguageCertificate",
+      "description": "Xorijiy til sertifikatlari"
     },
     "/announcements/{announcementId}": {
       "schema": "Announcement",

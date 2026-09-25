@@ -44,7 +44,11 @@ import {
   ArrowUpDown,
   SlidersHorizontal,
   RotateCcw,
+  Languages,
+  Loader2,
+  Upload,
 } from 'lucide-react';
+import { uploadPdfDocument } from '../lib/storage';
 import { EmptyState } from './EmptyState';
 import { EditStudentModal } from './EditStudentModal';
 import { EditSupervisorModal } from './EditSupervisorModal';
@@ -77,6 +81,10 @@ import {
   createOfficialCertificate,
   createOfficialCertificatesBatch,
   deleteCertificateDoc,
+  updateLanguageCertificateStatus,
+  updateLanguageCertificateFile,
+  bulkUpdateLanguageCertificatesFile,
+  deleteLanguageCertificate,
   fetchStudentsPaginated,
   softDeleteDocument,
 } from '../services/firestoreService';
@@ -86,6 +94,7 @@ import {
   exportProjectsToExcel,
   exportAchievementsToExcel,
   exportCertificatesToExcel,
+  exportLanguageCertificatesToExcel,
   exportAuditLogsToExcel,
   exportEventParticipantsToExcel,
   exportCompetitionApplicationsToExcel,
@@ -105,6 +114,7 @@ import {
   changeUserRole,
 } from '../services/authService';
 import { downloadCertificatePdf, downloadBulkCertificatesPdf } from '../lib/certificateGenerator';
+import { generateLanguageCertificatePdfDataUrl, downloadLanguageCertificatePdf } from '../lib/languageCertificateGenerator';
 import { formatUzbekPhone } from '../lib/crypto';
 import { matchesStudentSearch } from '../lib/searchUtils';
 import type {
@@ -114,6 +124,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
   Announcement,
   AuditLog,
@@ -127,6 +138,7 @@ interface Props {
   projects: ProjectOrStartup[];
   achievements: Achievement[];
   certificates: CertificateItem[];
+  languageCertificates?: LanguageCertificate[];
   events: EventItem[];
   announcements: Announcement[];
   auditLogs: AuditLog[];
@@ -150,6 +162,7 @@ type TabType =
   | 'projects'
   | 'achievements'
   | 'certificates'
+  | 'language_certificates'
   | 'events'
   | 'announcements'
   | 'admins'
@@ -164,6 +177,7 @@ export const AdminDashboard: React.FC<Props> = ({
   projects = [],
   achievements = [],
   certificates = [],
+  languageCertificates = [],
   events = [],
   announcements = [],
   auditLogs = [],
@@ -183,6 +197,7 @@ export const AdminDashboard: React.FC<Props> = ({
   const canViewStartups = hasPermission(currentUser, 'startups', 'view');
   const canViewAchievements = hasPermission(currentUser, 'achievements', 'view');
   const canViewCertificates = hasPermission(currentUser, 'certificates', 'view');
+  const canViewLanguageCertificates = isSuperAdmin || hasPermission(currentUser, 'language_certificates', 'view') || hasPermission(currentUser, 'certificates', 'view');
   const canViewEvents = hasPermission(currentUser, 'events', 'view');
   const canViewAnnouncements = hasPermission(currentUser, 'announcements', 'view');
   const canViewAdmins = isSuperAdmin || hasPermission(currentUser, 'admins', 'view');
@@ -195,6 +210,7 @@ export const AdminDashboard: React.FC<Props> = ({
     projects.filter(p => p.isDeleted).length +
     achievements.filter(a => a.isDeleted).length +
     certificates.filter(c => c.isDeleted).length +
+    languageCertificates.filter(lc => lc.isDeleted).length +
     events.filter(e => e.isDeleted).length +
     announcements.filter(a => a.isDeleted).length +
     allUsers.filter(u => (u.role === 'admin' || u.role === 'superAdmin') && u.isDeleted).length
@@ -207,6 +223,7 @@ export const AdminDashboard: React.FC<Props> = ({
     { id: 'projects' as TabType, label: 'Loyihalar va Startaplar', icon: FolderGit2, count: projects.filter(p => !p.isDeleted && (((p.type === 'startap' || p.type === 'startup') && canViewStartups) || (p.type !== 'startap' && p.type !== 'startup' && canViewProjects))).length, visible: canViewProjects || canViewStartups },
     { id: 'achievements' as TabType, label: 'Yutuqlar', icon: Trophy, count: achievements.filter(a => !a.isDeleted).length, visible: canViewAchievements },
     { id: 'certificates' as TabType, label: 'Sertifikatlar', icon: Award, count: certificates.filter(c => !c.isDeleted).length, visible: canViewCertificates },
+    { id: 'language_certificates' as TabType, label: 'Til sertifikatlari', icon: Languages, count: languageCertificates.filter(lc => !lc.isDeleted).length, visible: canViewLanguageCertificates },
     { id: 'events' as TabType, label: 'Tadbirlar', icon: Calendar, count: events.filter(e => !e.isDeleted).length, visible: canViewEvents },
     { id: 'announcements' as TabType, label: "E'lonlar", icon: Bell, count: announcements.filter(a => !a.isDeleted).length, visible: canViewAnnouncements },
     { id: 'admins' as TabType, label: 'Adminlar va Huquqlar', icon: Shield, count: allUsers.filter(u => (u.role === 'admin' || u.role === 'superAdmin') && !u.isDeleted).length, visible: canViewAdmins },
@@ -220,6 +237,7 @@ export const AdminDashboard: React.FC<Props> = ({
     canViewStartups,
     canViewAchievements,
     canViewCertificates,
+    canViewLanguageCertificates,
     canViewEvents,
     canViewAnnouncements,
     canViewAdmins,
@@ -230,6 +248,7 @@ export const AdminDashboard: React.FC<Props> = ({
     projects,
     achievements,
     certificates,
+    languageCertificates,
     events,
     announcements,
     allUsers,
@@ -281,6 +300,26 @@ export const AdminDashboard: React.FC<Props> = ({
   const [certificateStatusFilter, setCertificateStatusFilter] = useState<string>('all');
   const [certificateSort, setCertificateSort] = useState<'newest' | 'oldest' | 'number_asc' | 'student_asc' | 'title_asc'>('newest');
   const [certificateCurrentPage, setCertificateCurrentPage] = useState<number>(1);
+
+  // Language Certificates Search, Filters, Sorting & Pagination
+  const [langCertSearch, setLangCertSearch] = useState('');
+  const [langCertLanguageFilter, setLangCertLanguageFilter] = useState<string>('all');
+  const [langCertLevelFilter, setLangCertLevelFilter] = useState<string>('all');
+  const [langCertStatusFilter, setLangCertStatusFilter] = useState<string>('all');
+  const [langCertSort, setLangCertSort] = useState<'newest' | 'oldest' | 'student_asc' | 'level_desc'>('newest');
+  const [langCertCurrentPage, setLangCertCurrentPage] = useState<number>(1);
+  const [isExportingLangCerts, setIsExportingLangCerts] = useState(false);
+  const [langReviewModalData, setLangReviewModalData] = useState<{
+    id: string;
+    studentName: string;
+    language: string;
+    level: string;
+    status: 'Tasdiqlangan' | 'Rad etilgan';
+  } | null>(null);
+  const [langReviewNotes, setLangReviewNotes] = useState('');
+  const [isLangReviewSubmitting, setIsLangReviewSubmitting] = useState(false);
+  const [uploadingLangCertId, setUploadingLangCertId] = useState<string | null>(null);
+  const [isBulkUploadingPdf, setIsBulkUploadingPdf] = useState(false);
 
   // Events Search, Filters, Sorting & Pagination
   const [eventSearch, setEventSearch] = useState('');
@@ -905,6 +944,67 @@ export const AdminDashboard: React.FC<Props> = ({
     return filteredAndSortedCertificates.slice(start, start + CERTS_PAGE_SIZE);
   }, [filteredAndSortedCertificates, certificateCurrentPage, CERTS_PAGE_SIZE]);
 
+  // Filtered & Sorted Language Certificates
+  const filteredAndSortedLanguageCertificates = useMemo(() => {
+    const q = (langCertSearch || '').toLowerCase().trim();
+    const result = languageCertificates
+      .filter(c => !c.isDeleted)
+      .filter(c => {
+        const matchLang =
+          langCertLanguageFilter === 'all' ||
+          (c.language || '').toLowerCase() === langCertLanguageFilter.toLowerCase();
+
+        const matchLevel =
+          langCertLevelFilter === 'all' ||
+          (c.level || '').toUpperCase() === langCertLevelFilter.toUpperCase();
+
+        const matchStatus =
+          langCertStatusFilter === 'all' ||
+          c.status === langCertStatusFilter;
+
+        const matchSearch =
+          !q ||
+          (c.studentName || '').toLowerCase().includes(q) ||
+          (c.language || '').toLowerCase().includes(q) ||
+          (c.certificateType || '').toLowerCase().includes(q) ||
+          (c.certificateNumber || '').toLowerCase().includes(q) ||
+          (c.level || '').toLowerCase().includes(q) ||
+          (c.score || '').toLowerCase().includes(q);
+
+        return matchLang && matchLevel && matchStatus && matchSearch;
+      });
+
+    return result.sort((a, b) => {
+      if (langCertSort === 'newest') {
+        const dA = a.issueDate || a.createdAt || '';
+        const dB = b.issueDate || b.createdAt || '';
+        return dB.localeCompare(dA);
+      }
+      if (langCertSort === 'oldest') {
+        const dA = a.issueDate || a.createdAt || '';
+        const dB = b.issueDate || b.createdAt || '';
+        return dA.localeCompare(dB);
+      }
+      if (langCertSort === 'student_asc') {
+        return (a.studentName || '').localeCompare(b.studentName || '');
+      }
+      if (langCertSort === 'level_desc') {
+        const levelWeight: Record<string, number> = { C2: 6, C1: 5, B2: 4, B1: 3, A2: 2, A1: 1 };
+        const wA = levelWeight[a.level?.toUpperCase()] || 0;
+        const wB = levelWeight[b.level?.toUpperCase()] || 0;
+        return wB - wA;
+      }
+      return 0;
+    });
+  }, [languageCertificates, langCertLanguageFilter, langCertLevelFilter, langCertStatusFilter, langCertSearch, langCertSort]);
+
+  const LANG_CERTS_PAGE_SIZE = 12;
+  const totalLangCertPages = Math.max(1, Math.ceil(filteredAndSortedLanguageCertificates.length / LANG_CERTS_PAGE_SIZE));
+  const paginatedLanguageCertificates = useMemo(() => {
+    const start = (langCertCurrentPage - 1) * LANG_CERTS_PAGE_SIZE;
+    return filteredAndSortedLanguageCertificates.slice(start, start + LANG_CERTS_PAGE_SIZE);
+  }, [filteredAndSortedLanguageCertificates, langCertCurrentPage, LANG_CERTS_PAGE_SIZE]);
+
   // Filtered & Sorted Events
   const filteredAndSortedEvents = useMemo(() => {
     const q = (eventSearch || '').toLowerCase().trim();
@@ -1212,6 +1312,192 @@ export const AdminDashboard: React.FC<Props> = ({
       onNotify('error', err.message || "Statusni o'zgartirishda xatolik.");
     } finally {
       setIsReviewSubmitting(false);
+    }
+  };
+
+  // Language Certificates Action Handlers
+  const handleApproveLangCert = async (cert: LanguageCertificate) => {
+    try {
+      await updateLanguageCertificateStatus(
+        cert.id,
+        'Tasdiqlangan',
+        'Administrator tomonidan tasdiqlandi',
+        currentUser
+      );
+      onNotify('success', `${cert.studentName}ning ${cert.language} (${cert.level}) sertifikati tasdiqlandi!`);
+    } catch (err: any) {
+      onNotify('error', err.message || 'Tasdiqlashda xatolik yuz berdi.');
+    }
+  };
+
+  const handleViewLanguageCertPdf = async (cert: LanguageCertificate) => {
+    try {
+      if (cert.fileDataUrl || cert.fileUrl) {
+        onOpenPdf(
+          cert.fileDataUrl || cert.fileUrl!,
+          cert.fileName || `Sertifikat_${cert.certificateNumber}.pdf`,
+          cert.fileSize,
+          `${cert.studentName} — ${cert.language} (${cert.level})`
+        );
+      } else {
+        const dataUrl = await generateLanguageCertificatePdfDataUrl(cert);
+        onOpenPdf(
+          dataUrl,
+          `Sertifikat_${cert.studentName.replace(/\s+/g, '_')}_${cert.certificateNumber}.pdf`,
+          150000,
+          `${cert.studentName} — ${cert.language} (${cert.level})`
+        );
+      }
+    } catch (err: any) {
+      console.error('Error generating/opening language certificate PDF:', err);
+      onNotify('error', err.message || 'Sertifikat PDF faylini ochishda xatolik yuz berdi.');
+    }
+  };
+
+  const handleUploadOriginalPdfForCert = async (cert: LanguageCertificate, file: File) => {
+    setUploadingLangCertId(cert.id);
+    try {
+      let localDataUrl: string | undefined;
+      try {
+        localDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch (readErr) {
+        console.warn('FileReader warning:', readErr);
+      }
+
+      const uploadRes = await uploadPdfDocument(
+        file,
+        cert.studentId,
+        'languageCertificates'
+      );
+      await updateLanguageCertificateFile(
+        cert.id,
+        {
+          fileUrl: uploadRes.fileUrl,
+          fileDataUrl: localDataUrl || uploadRes.fileDataUrl,
+          fileName: file.name || uploadRes.fileName,
+          fileSize: file.size || uploadRes.fileSize,
+          fileType: file.type || uploadRes.fileType,
+          storagePath: uploadRes.storagePath,
+        },
+        currentUser
+      );
+      onNotify('success', `${cert.studentName}ning asl skanerlangan PDF sertifikati muvaffaqiyatli saqlandi!`);
+    } catch (err: any) {
+      console.error('File upload error:', err);
+      onNotify('error', err?.message || 'Faylni yuklashda xatolik yuz berdi.');
+    } finally {
+      setUploadingLangCertId(null);
+    }
+  };
+
+  const handleBulkUploadOriginalPdf = async (file: File) => {
+    setIsBulkUploadingPdf(true);
+    try {
+      let localDataUrl: string | undefined;
+      try {
+        localDataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch (readErr) {
+        console.warn('FileReader warning:', readErr);
+      }
+
+      const uploadRes = await uploadPdfDocument(
+        file,
+        'admin-magistr-master',
+        'languageCertificates'
+      );
+      const allCertIds = languageCertificates.map(c => c.id);
+      await bulkUpdateLanguageCertificatesFile(
+        allCertIds,
+        {
+          fileUrl: uploadRes.fileUrl,
+          fileDataUrl: localDataUrl || uploadRes.fileDataUrl,
+          fileName: file.name || uploadRes.fileName,
+          fileSize: file.size || uploadRes.fileSize,
+          fileType: file.type || uploadRes.fileType,
+          storagePath: uploadRes.storagePath,
+        },
+        currentUser
+      );
+      onNotify('success', `Asl skanerlangan PDF hujjati barcha ${allCertIds.length} ta til sertifikatiga to‘liq biriktirildi!`);
+    } catch (err: any) {
+      console.error('Bulk upload error:', err);
+      onNotify('error', err?.message || 'Umumiy PDF faylni yuklashda xatolik.');
+    } finally {
+      setIsBulkUploadingPdf(false);
+    }
+  };
+
+  const handleOpenRejectLangCert = (cert: LanguageCertificate) => {
+    setLangReviewModalData({
+      id: cert.id,
+      studentName: cert.studentName,
+      language: cert.language,
+      level: cert.level,
+      status: 'Rad etilgan',
+    });
+    setLangReviewNotes('');
+  };
+
+  const handleSubmitLangReview = async () => {
+    if (!langReviewModalData) return;
+    setIsLangReviewSubmitting(true);
+    try {
+      await updateLanguageCertificateStatus(
+        langReviewModalData.id,
+        langReviewModalData.status,
+        langReviewNotes.trim(),
+        currentUser
+      );
+      onNotify('success', `Til sertifikati holati «${langReviewModalData.status}» ga o‘zgartirildi.`);
+      setLangReviewModalData(null);
+      setLangReviewNotes('');
+    } catch (err: any) {
+      onNotify('error', err.message || 'Statusni o‘zgartirishda xatolik yuz berdi.');
+    } finally {
+      setIsLangReviewSubmitting(false);
+    }
+  };
+
+  const handleDeleteLangCert = (cert: LanguageCertificate) => {
+    onConfirmModal({
+      title: "Til sertifikatini o'chirish",
+      message: `${cert.studentName}ning «${cert.language} (${cert.certificateType} - ${cert.level})» sertifikatini o'chirishni (chiqindilar qutisiga o'tkazishni) tasdiqlaysizmi?`,
+      confirmText: "Ha, o'chirish",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteLanguageCertificate(cert.id, {
+            id: currentUser.id,
+            fullName: currentUser.fullName,
+            role: currentUser.role,
+          });
+          onNotify('success', `Til sertifikati o'chirildi va chiqindilar qutisiga jo'natildi.`);
+        } catch (err: any) {
+          onNotify('error', err.message || "O'chirishda xatolik yuz berdi.");
+        }
+      },
+    });
+  };
+
+  const handleExportLanguageCertificates = async () => {
+    try {
+      setIsExportingLangCerts(true);
+      await exportLanguageCertificatesToExcel(languageCertificates, students);
+      onNotify('success', 'Barcha xorijiy til sertifikatlari Excel formatida yuklab olindi!');
+    } catch (err: any) {
+      onNotify('error', err.message || 'Excel eksport qilishda xatolik yuz berdi.');
+    } finally {
+      setIsExportingLangCerts(false);
     }
   };
 
@@ -3584,6 +3870,556 @@ export const AdminDashboard: React.FC<Props> = ({
                     type="button"
                     onClick={() => setCertificateCurrentPage(p => Math.min(totalCertPages, p + 1))}
                     disabled={certificateCurrentPage >= totalCertPages}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Keyingi</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* TAB: LANGUAGE CERTIFICATES */}
+      {activeTab === 'language_certificates' && canViewLanguageCertificates && (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Xorijiy til sertifikatlari reestri</h2>
+                <span className="px-2.5 py-0.5 text-xs font-bold bg-indigo-50 text-indigo-900 rounded-md border border-indigo-200">
+                  Jami: {languageCertificates.filter(c => !c.isDeleted).length} ta
+                </span>
+                {filteredAndSortedLanguageCertificates.length !== languageCertificates.filter(c => !c.isDeleted).length && (
+                  <span className="px-2.5 py-0.5 text-xs font-semibold bg-slate-100 text-slate-600 rounded-md">
+                    Filtr bo‘yicha: {filteredAndSortedLanguageCertificates.length} ta
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Talabalar tomonidan taqdim etilgan IELTS, CEFR / Milliy sertifikat, TOEFL, TestDaF va boshqa xalqaro til darajalari bazasi.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <label
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
+                title="Kompyuteringizdagi 48 ta sertifikatning asl skanerlangan umumiy PDF faylini birdaniga biriktirish"
+              >
+                {isBulkUploadingPdf ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                <span>{isBulkUploadingPdf ? 'Fayl yuklanmoqda...' : 'Asl skanerlangan PDF faylni yuklash'}</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  className="hidden"
+                  disabled={isBulkUploadingPdf}
+                  onChange={e => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      handleBulkUploadOriginalPdf(file);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={handleExportLanguageCertificates}
+                disabled={isExportingLangCerts || languageCertificates.length === 0}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
+                title="Til sertifikatlarini Excel (.xlsx) formatida yuklab olish"
+              >
+                {isExportingLangCerts ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="w-4 h-4" />
+                )}
+                <span>Excelga yuklash</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Statistics summary row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase block">Jami arizalar</span>
+              <strong className="text-xl font-bold text-slate-900 mt-1 block">
+                {languageCertificates.filter(c => !c.isDeleted).length} ta
+              </strong>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/20 shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-800 uppercase block">Tasdiqlangan</span>
+              <strong className="text-xl font-bold text-emerald-700 mt-1 block">
+                {languageCertificates.filter(c => !c.isDeleted && c.status === 'Tasdiqlangan').length} ta
+              </strong>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-amber-200 bg-amber-50/20 shadow-2xs">
+              <span className="text-[11px] font-semibold text-amber-800 uppercase block">Kutilmoqda</span>
+              <strong className="text-xl font-bold text-amber-700 mt-1 block">
+                {languageCertificates.filter(c => !c.isDeleted && c.status === 'Kutilmoqda').length} ta
+              </strong>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-indigo-200 bg-indigo-50/20 shadow-2xs">
+              <span className="text-[11px] font-semibold text-indigo-800 uppercase block">C1 / C2 Daraja</span>
+              <strong className="text-xl font-bold text-indigo-700 mt-1 block">
+                {languageCertificates.filter(c => !c.isDeleted && (c.level === 'C1' || c.level === 'C2')).length} ta
+              </strong>
+            </div>
+          </div>
+
+          {/* Search, Filter and Sort Bar */}
+          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                placeholder="Talaba F.I.Sh, til, sertifikat turi, seriya/raqam bo‘yicha qidirish..."
+                value={langCertSearch}
+                onChange={e => {
+                  setLangCertSearch(e.target.value);
+                  setLangCertCurrentPage(1);
+                }}
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Language Filter */}
+              <select
+                value={langCertLanguageFilter}
+                onChange={e => {
+                  setLangCertLanguageFilter(e.target.value);
+                  setLangCertCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha tillar</option>
+                <option value="Ingliz tili">Ingliz tili</option>
+                <option value="Nemis tili">Nemis tili</option>
+                <option value="Fransuz tili">Fransuz tili</option>
+                <option value="Rus tili">Rus tili</option>
+                <option value="Koreys tili">Koreys tili</option>
+                <option value="Xitoy tili">Xitoy tili</option>
+                <option value="Arab tili">Arab tili</option>
+                <option value="Turk tili">Turk tili</option>
+              </select>
+
+              {/* Level Filter */}
+              <select
+                value={langCertLevelFilter}
+                onChange={e => {
+                  setLangCertLevelFilter(e.target.value);
+                  setLangCertCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer font-bold"
+              >
+                <option value="all">Barcha darajalar</option>
+                <option value="C2">C2</option>
+                <option value="C1">C1</option>
+                <option value="B2">B2</option>
+                <option value="B1">B1</option>
+                <option value="A2">A2</option>
+                <option value="A1">A1</option>
+              </select>
+
+              {/* Status Filter */}
+              <select
+                value={langCertStatusFilter}
+                onChange={e => {
+                  setLangCertStatusFilter(e.target.value);
+                  setLangCertCurrentPage(1);
+                }}
+                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 cursor-pointer"
+              >
+                <option value="all">Barcha statuslar</option>
+                <option value="Kutilmoqda">Kutilmoqda</option>
+                <option value="Tasdiqlangan">Tasdiqlangan</option>
+                <option value="Rad etilgan">Rad etilgan</option>
+              </select>
+
+              {/* Sort Order */}
+              <div className="flex items-center gap-1 bg-slate-50 px-2 py-1 border border-slate-200 rounded-xl">
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-500 shrink-0 ml-1" />
+                <select
+                  value={langCertSort}
+                  onChange={e => setLangCertSort(e.target.value as any)}
+                  className="bg-transparent text-xs text-slate-700 py-1 pr-2 focus:outline-none cursor-pointer"
+                >
+                  <option value="newest">Eng so‘nggi sanadagilar</option>
+                  <option value="oldest">Eski sanadagilar</option>
+                  <option value="student_asc">Talaba F.I.Sh (A–Z)</option>
+                  <option value="level_desc">Yuqori daraja (C2–A1)</option>
+                </select>
+              </div>
+
+              {/* Reset filter button */}
+              {(langCertSearch || langCertLanguageFilter !== 'all' || langCertLevelFilter !== 'all' || langCertStatusFilter !== 'all' || langCertSort !== 'newest') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLangCertSearch('');
+                    setLangCertLanguageFilter('all');
+                    setLangCertLevelFilter('all');
+                    setLangCertStatusFilter('all');
+                    setLangCertSort('newest');
+                    setLangCertCurrentPage(1);
+                  }}
+                  className="px-2.5 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                  title="Filtrlarni tozalash"
+                >
+                  Tozalash
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {filteredAndSortedLanguageCertificates.length === 0 ? (
+            <EmptyState
+              title="Til sertifikatlari topilmadi"
+              description="Qidiruv yoki filtr mezonlariga mos keluvchi xorijiy til sertifikati mavjud emas."
+            />
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                      <tr>
+                        <th className="py-3.5 px-4 w-12 text-center">№</th>
+                        <th className="py-3.5 px-4">Talaba</th>
+                        <th className="py-3.5 px-4">Til va Turi</th>
+                        <th className="py-3.5 px-4">Darajasi va Ball</th>
+                        <th className="py-3.5 px-4">Seriya / Raqam</th>
+                        <th className="py-3.5 px-4">Muddati</th>
+                        <th className="py-3.5 px-4">Holati</th>
+                        <th className="py-3.5 px-4 text-right">Amallar</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 text-slate-700">
+                      {paginatedLanguageCertificates.map((cert, idx) => {
+                        const rowNum = (langCertCurrentPage - 1) * LANG_CERTS_PAGE_SIZE + idx + 1;
+                        const targetStudent = students.find(s => s.id === cert.studentId);
+                        const isHighLevel = cert.level === 'C1' || cert.level === 'C2';
+                        const isB2 = cert.level === 'B2';
+
+                        return (
+                          <tr key={cert.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="py-3 px-4 text-center font-mono text-slate-400">{rowNum}</td>
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-900">
+                                {cert.studentName || targetStudent?.fullName}
+                              </div>
+                              <div className="text-[11px] text-slate-500">
+                                {targetStudent ? `${targetStudent.course}-kurs, ${targetStudent.group}` : 'Talaba'}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                                <Languages className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                                <span>{cert.language}</span>
+                              </div>
+                              <span className="text-[11px] text-slate-500 font-medium">
+                                {cert.certificateType}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span
+                                  className={`px-2 py-0.5 rounded-md font-extrabold text-[11px] ${
+                                    isHighLevel
+                                      ? 'bg-indigo-900 text-white'
+                                      : isB2
+                                      ? 'bg-blue-900 text-white'
+                                      : 'bg-slate-700 text-white'
+                                  }`}
+                                >
+                                  {cert.level}
+                                </span>
+                                {cert.score && (
+                                  <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 font-bold border border-amber-200 text-[11px]">
+                                    {cert.score}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4 font-mono font-medium text-slate-800">
+                              {cert.certificateNumber}
+                            </td>
+                            <td className="py-3 px-4 text-[11px] text-slate-600">
+                              <div>Berilgan: <strong>{cert.issueDate}</strong></div>
+                              <div className="text-slate-400">Amal: {cert.expiryDate || 'Muddatsiz'}</div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                  cert.status === 'Tasdiqlangan'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : cert.status === 'Rad etilgan'
+                                    ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {cert.status === 'Tasdiqlangan' ? (
+                                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                ) : cert.status === 'Rad etilgan' ? (
+                                  <XCircle className="w-3 h-3 text-rose-600" />
+                                ) : (
+                                  <Clock className="w-3 h-3 text-amber-600" />
+                                )}
+                                <span>{cert.status}</span>
+                              </span>
+                              {cert.status === 'Rad etilgan' && cert.reviewNotes && (
+                                <p className="text-[10px] text-rose-700 mt-1 line-clamp-1" title={cert.reviewNotes}>
+                                  Sabab: {cert.reviewNotes}
+                                </p>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="inline-flex items-center gap-1.5 justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => handleViewLanguageCertPdf(cert)}
+                                  className="p-1.5 text-purple-700 hover:text-purple-900 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                  title="PDF Hujjatni ko‘rish"
+                                >
+                                  <FileText className="w-4 h-4 text-red-600" />
+                                </button>
+
+                                <label
+                                  className="p-1.5 text-blue-700 hover:text-blue-900 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Asl skanerlangan PDF faylni biriktirish"
+                                >
+                                  {uploadingLangCertId === cert.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin text-blue-700" />
+                                  ) : (
+                                    <Upload className="w-4 h-4 text-blue-700" />
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="application/pdf,image/*"
+                                    className="hidden"
+                                    disabled={uploadingLangCertId === cert.id}
+                                    onChange={e => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        handleUploadOriginalPdfForCert(cert, file);
+                                      }
+                                      e.target.value = '';
+                                    }}
+                                  />
+                                </label>
+
+                                {hasPermission(currentUser, 'language_certificates', 'approve') && cert.status !== 'Tasdiqlangan' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveLangCert(cert)}
+                                    className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Tasdiqlash"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                  </button>
+                                )}
+
+                                {hasPermission(currentUser, 'language_certificates', 'approve') && cert.status !== 'Rad etilgan' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenRejectLangCert(cert)}
+                                    className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    title="Rad etish (Izoh bilan)"
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </button>
+                                )}
+
+                                {hasPermission(currentUser, 'language_certificates', 'delete') && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteLangCert(cert)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    title="O‘chirish"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
+                {paginatedLanguageCertificates.map(cert => {
+                  const targetStudent = students.find(s => s.id === cert.studentId);
+                  const isHighLevel = cert.level === 'C1' || cert.level === 'C2';
+                  const isB2 = cert.level === 'B2';
+                  return (
+                    <div key={cert.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">{cert.studentName || targetStudent?.fullName}</h4>
+                          <span className="text-xs text-slate-500">{targetStudent ? `${targetStudent.course}-kurs, ${targetStudent.group}` : ''}</span>
+                        </div>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                            cert.status === 'Tasdiqlangan'
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : cert.status === 'Rad etilgan'
+                              ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                              : 'bg-amber-50 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          {cert.status}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-bold text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                          {cert.language} ({cert.certificateType})
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-md font-bold text-xs ${
+                            isHighLevel
+                              ? 'bg-indigo-900 text-white'
+                              : isB2
+                              ? 'bg-blue-900 text-white'
+                              : 'bg-slate-700 text-white'
+                          }`}
+                        >
+                          {cert.level}
+                        </span>
+                        {cert.score && (
+                          <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 font-bold border border-amber-200 text-xs">
+                            {cert.score}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl font-mono">
+                        <div>№ {cert.certificateNumber}</div>
+                        <div className="text-slate-500 font-sans">Berilgan: {cert.issueDate} • Amal: {cert.expiryDate || 'Muddatsiz'}</div>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleViewLanguageCertPdf(cert)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors cursor-pointer border border-purple-200"
+                            title="Sertifikat PDF hujjatini ko‘rish"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-red-600" />
+                            <span>PDF</span>
+                          </button>
+
+                          <label
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer border border-blue-200"
+                            title="Asl skanerlangan PDF faylni biriktirish"
+                          >
+                            {uploadingLangCertId === cert.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-700" />
+                            ) : (
+                              <Upload className="w-3.5 h-3.5 text-blue-700" />
+                            )}
+                            <span>{uploadingLangCertId === cert.id ? '...' : 'Asl fayl'}</span>
+                            <input
+                              type="file"
+                              accept="application/pdf,image/*"
+                              className="hidden"
+                              disabled={uploadingLangCertId === cert.id}
+                              onChange={e => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  handleUploadOriginalPdfForCert(cert, file);
+                                }
+                                e.target.value = '';
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          {hasPermission(currentUser, 'language_certificates', 'approve') && cert.status !== 'Tasdiqlangan' && (
+                            <button
+                              type="button"
+                              onClick={() => handleApproveLangCert(cert)}
+                              className="px-2.5 py-1 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                              Tasdiqlash
+                            </button>
+                          )}
+                          {hasPermission(currentUser, 'language_certificates', 'approve') && cert.status !== 'Rad etilgan' && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenRejectLangCert(cert)}
+                              className="px-2.5 py-1 text-xs font-semibold text-rose-800 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                            >
+                              Rad etish
+                            </button>
+                          )}
+                          {hasPermission(currentUser, 'language_certificates', 'delete') && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteLangCert(cert)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Pagination Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 bg-white rounded-2xl border border-slate-200 text-xs shadow-xs">
+                <div className="text-slate-500 font-medium">
+                  Ko‘rsatilmoqda: <span className="font-bold text-slate-800">{(langCertCurrentPage - 1) * LANG_CERTS_PAGE_SIZE + 1}–{Math.min(langCertCurrentPage * LANG_CERTS_PAGE_SIZE, filteredAndSortedLanguageCertificates.length)}</span> (Jami: <span className="font-bold text-slate-800">{filteredAndSortedLanguageCertificates.length}</span> ta)
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setLangCertCurrentPage(1)}
+                    disabled={langCertCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <span>Birinchi</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLangCertCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={langCertCurrentPage <= 1}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Oldingi</span>
+                  </button>
+
+                  <span className="px-3 py-1.5 bg-blue-900 text-white font-bold rounded-xl shadow-2xs">
+                    {langCertCurrentPage} / {totalLangCertPages}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setLangCertCurrentPage(p => Math.min(totalLangCertPages, p + 1))}
+                    disabled={langCertCurrentPage >= totalLangCertPages}
                     className="inline-flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed text-slate-700 font-semibold rounded-xl border border-slate-200 transition-colors cursor-pointer"
                   >
                     <span>Keyingi</span>

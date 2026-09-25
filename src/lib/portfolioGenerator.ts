@@ -6,6 +6,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
 } from '../types';
 
@@ -16,6 +17,7 @@ export interface PortfolioData {
   startups: ProjectOrStartup[];
   achievements: Achievement[];
   certificates: CertificateItem[];
+  languageCertificates?: LanguageCertificate[];
   events: EventItem[];
 }
 
@@ -230,8 +232,39 @@ export async function generateStudentPortfolioPdf(data: PortfolioData): Promise<
   }
   currentY += 4;
 
-  // 6. EVENTS PARTICIPATION
-  drawSectionTitle('4. ISHTIROK ETGAN TADBIR VA TANLOVLAR', events.length);
+  // 6. LANGUAGE CERTIFICATES SECTION
+  const validLangCerts = (data.languageCertificates || []).filter(c => !c.isDeleted && c.status === 'Tasdiqlangan');
+  drawSectionTitle('4. XORIJIIY TIL SERTIFIKATLARI (LANGUAGE CERTIFICATES)', validLangCerts.length);
+  if (validLangCerts.length === 0) {
+    checkPageBreak(10);
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(148, 163, 184);
+    doc.text('Hozircha tasdiqlangan xorijiy til sertifikati mavjud emas.', margin + 4, currentY);
+    currentY += 8;
+  } else {
+    validLangCerts.forEach((lc, i) => {
+      checkPageBreak(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${i + 1}. ${lc.language} — ${lc.certificateType} (Daraja: ${lc.level}${lc.score ? `, Ball: ${lc.score}` : ''})`, margin + 4, currentY);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(100, 116, 139);
+      doc.text(
+        `Seriya/Raqam: ${lc.certificateNumber}   |   Berilgan: ${lc.issueDate || '—'}   |   Amal qilish muddati: ${lc.expiryDate || 'Muddatsiz'}`,
+        margin + 8,
+        currentY + 5
+      );
+      currentY += 11;
+    });
+  }
+  currentY += 4;
+
+  // 7. EVENTS PARTICIPATION
+  drawSectionTitle('5. ISHTIROK ETGAN TADBIR VA TANLOVLAR', events.length);
   if (events.length === 0) {
     checkPageBreak(10);
     doc.setFont('helvetica', 'italic');

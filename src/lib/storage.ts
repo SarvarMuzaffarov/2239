@@ -191,7 +191,7 @@ async function uploadToFirestoreChunks(
 export async function uploadPdfDocument(
   file: File,
   studentId: string,
-  category: 'certificates' | 'projects' | 'achievements' | 'startups',
+  category: 'certificates' | 'projects' | 'achievements' | 'startups' | 'languageCertificates',
   onProgress?: (info: UploadProgressInfo) => void
 ): Promise<UploadResult> {
   // Step 1: Validation

@@ -10,6 +10,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   AuditLog,
 } from '../types';
 
@@ -437,5 +438,61 @@ export async function exportAuditLogsToExcel(logs: AuditLog[]): Promise<void> {
   XLSX.utils.book_append_sheet(workbook, worksheet, 'Audit_Loglari');
   const dateStr = new Date().toISOString().split('T')[0];
   XLSX.writeFile(workbook, `Audit_Loglari_${dateStr}.xlsx`);
+}
+
+/**
+ * Exports language certificates to an Excel (.xlsx) file
+ */
+export async function exportLanguageCertificatesToExcel(
+  items: LanguageCertificate[],
+  students: StudentProfile[] = []
+): Promise<void> {
+  const studentMap = new Map<string, StudentProfile>();
+  students.forEach(s => studentMap.set(s.id, s));
+
+  const rows = items
+    .filter(i => !i.isDeleted)
+    .map((c, index) => {
+      const st = studentMap.get(c.studentId);
+      return {
+        '№': index + 1,
+        'Talaba F.I.Sh.': c.studentName || st?.fullName || '—',
+        'Guruh': st?.group || '—',
+        'Yo‘nalish': st?.facultyOrField ? (canonicalizeDirection(st.facultyOrField) || st.facultyOrField) : '—',
+        'Til': c.language || '—',
+        'Sertifikat turi': c.certificateType || '—',
+        'Darajasi': c.level || '—',
+        'Ball': c.score || '—',
+        'Seriya / Raqam': c.certificateNumber || '—',
+        'Berilgan sana': c.issueDate || '—',
+        'Amal qilish muddati': c.expiryDate || 'Muddatsiz',
+        'Holati': c.status || '—',
+        'Ko‘rib chiquvchi': c.reviewedByName || '—',
+        'Qayd etilgan sana': c.createdAt ? new Date(c.createdAt).toLocaleDateString('uz-UZ') : '—',
+      };
+    });
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  worksheet['!cols'] = [
+    { wch: 5 },
+    { wch: 30 },
+    { wch: 12 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 22 },
+    { wch: 10 },
+    { wch: 10 },
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 22 },
+    { wch: 18 },
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Til_Sertifikatlari');
+  const dateStr = new Date().toISOString().split('T')[0];
+  XLSX.writeFile(workbook, `Til_Sertifikatlari_${dateStr}.xlsx`);
 }
 

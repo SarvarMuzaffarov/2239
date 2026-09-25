@@ -27,6 +27,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
   EventRegistration,
   Announcement,
@@ -698,6 +699,188 @@ export async function getCertificateByNumber(certInput: string): Promise<Certifi
   }
 
   return null;
+}
+
+// ----------------- LANGUAGE CERTIFICATES -----------------
+export function subscribeLanguageCertificates(onUpdate: (items: LanguageCertificate[]) => void): Unsubscribe {
+  const colRef = collection(db, 'languageCertificates');
+  return onSnapshot(
+    colRef,
+    snapshot => {
+      const list: LanguageCertificate[] = [];
+      snapshot.forEach(docSnap => {
+        list.push({ id: docSnap.id, ...docSnap.data() } as LanguageCertificate);
+      });
+      list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onUpdate(list);
+    },
+    error => {
+      handleSubscriptionError('languageCertificates', error);
+    }
+  );
+}
+
+export async function createLanguageCertificate(
+  data: Omit<LanguageCertificate, 'id' | 'createdAt'>,
+  actor?: { id: string; fullName: string; role: UserRole }
+): Promise<string> {
+  const ref = doc(collection(db, 'languageCertificates'));
+  const cert: LanguageCertificate = {
+    ...data,
+    id: ref.id,
+    createdAt: new Date().toISOString(),
+  };
+  await withFirestoreTimeout(
+    setDoc(ref, cert),
+    12000,
+    'Til sertifikati ma’lumotlarini saqlashda vaqt tugadi. Qayta urinib ko‘ring.'
+  );
+
+  if (actor) {
+    await logAuditAction(
+      actor,
+      "Til sertifikati qo'shish",
+      'languageCertificates',
+      ref.id,
+      `Yangi til sertifikati: ${data.language} (${data.certificateType} - ${data.level}) - ${data.studentName}`
+    );
+  }
+  return ref.id;
+}
+
+export async function updateLanguageCertificateStatus(
+  id: string,
+  status: 'Tasdiqlangan' | 'Rad etilgan',
+  notes: string = '',
+  adminUser: { id: string; fullName: string; role?: UserRole }
+) {
+  if (!id || typeof id !== 'string' || !id.trim()) {
+    throw new Error("Sertifikat identifikatori (ID) ko'rsatilmagan.");
+  }
+
+  const cleanAdminUid = adminUser.id || 'admin-system';
+  const cleanAdminName = adminUser.fullName || 'Administrator';
+  const adminRole = adminUser.role || ('admin' as UserRole);
+
+  const ref = doc(db, 'languageCertificates', id.trim());
+  const updatePayload: Record<string, any> = {
+    status,
+    reviewedAt: new Date().toISOString(),
+    reviewedBy: cleanAdminUid,
+    reviewedByName: cleanAdminName,
+    reviewNotes: notes || '',
+    updatedAt: new Date().toISOString(),
+  };
+
+  await withFirestoreTimeout(
+    updateDoc(ref, updatePayload),
+    12000,
+    'Til sertifikati holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
+  );
+
+  await logAuditAction(
+    { id: cleanAdminUid, fullName: cleanAdminName, role: adminRole },
+    status === 'Tasdiqlangan' ? "Til sertifikatini tasdiqlash" : "Til sertifikatini rad etish",
+    'languageCertificates',
+    id,
+    `Til sertifikati holati: ${status}. Tasdiqlovchi: ${cleanAdminName}. Izoh: ${notes || 'Izohsiz'}`
+  );
+}
+
+export async function deleteLanguageCertificate(
+  id: string,
+  actor: { id: string; fullName: string; role: UserRole }
+) {
+  await softDeleteDocument('languageCertificates', id, 'Til sertifikati', actor);
+}
+
+export async function restoreLanguageCertificate(
+  id: string,
+  actor: { id: string; fullName: string; role: UserRole }
+) {
+  await restoreDocument('languageCertificates', id, 'Til sertifikati', actor);
+}
+
+export async function updateLanguageCertificateFile(
+  id: string,
+  fileData: {
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    storagePath?: string;
+    fileDataUrl?: string;
+  },
+  actor?: { id: string; fullName: string; role?: UserRole }
+) {
+  const ref = doc(db, 'languageCertificates', id);
+  const cleanData: Record<string, any> = {
+    fileUrl: fileData.fileUrl || '',
+    fileName: fileData.fileName || 'Sertifikat.pdf',
+    fileSize: Number(fileData.fileSize) || 0,
+    fileType: fileData.fileType || 'application/pdf',
+    updatedAt: new Date().toISOString(),
+  };
+  if (fileData.storagePath) cleanData.storagePath = fileData.storagePath;
+  if (fileData.fileDataUrl) cleanData.fileDataUrl = fileData.fileDataUrl;
+
+  await withFirestoreTimeout(
+    updateDoc(ref, cleanData),
+    12000,
+    'Sertifikat faylini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
+  );
+
+  if (actor) {
+    await logAuditAction(
+      { id: actor.id, fullName: actor.fullName, role: actor.role || ('admin' as UserRole) },
+      "Til sertifikatiga asl fayl biriktirish",
+      'languageCertificates',
+      id,
+      `Asl skanerlangan PDF fayl biriktirildi: ${cleanData.fileName}`
+    );
+  }
+}
+
+export async function bulkUpdateLanguageCertificatesFile(
+  certIds: string[],
+  fileData: {
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    fileType: string;
+    storagePath?: string;
+    fileDataUrl?: string;
+  },
+  actor?: { id: string; fullName: string; role?: UserRole }
+) {
+  const cleanData: Record<string, any> = {
+    fileUrl: fileData.fileUrl || '',
+    fileName: fileData.fileName || 'Sertifikatlar_Asl_Hujjat.pdf',
+    fileSize: Number(fileData.fileSize) || 0,
+    fileType: fileData.fileType || 'application/pdf',
+    updatedAt: new Date().toISOString(),
+  };
+  if (fileData.storagePath) cleanData.storagePath = fileData.storagePath;
+  if (fileData.fileDataUrl) cleanData.fileDataUrl = fileData.fileDataUrl;
+
+  for (const id of certIds) {
+    const ref = doc(db, 'languageCertificates', id);
+    await withFirestoreTimeout(
+      updateDoc(ref, cleanData),
+      12000,
+      'Sertifikat fayllarini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
+    );
+  }
+
+  if (actor) {
+    await logAuditAction(
+      { id: actor.id, fullName: actor.fullName, role: actor.role || ('admin' as UserRole) },
+      "Ommaviy sertifikat PDF faylini biriktirish",
+      'languageCertificates',
+      'bulk',
+      `Jami ${certIds.length} ta sertifikatga asl skanerlangan umumiy PDF fayl biriktirildi: ${cleanData.fileName}`
+    );
+  }
 }
 
 // ----------------- EVENTS -----------------

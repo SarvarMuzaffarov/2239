@@ -20,6 +20,7 @@ import {
   XCircle,
   AlertCircle,
   FolderOpen,
+  Languages,
 } from 'lucide-react';
 import type {
   UserAccount,
@@ -28,10 +29,12 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
 } from '../types';
 import { EmptyState } from './EmptyState';
 import { assignStudentSupervisor, updateStudentProfile } from '../services/firestoreService';
+import { generateLanguageCertificatePdfDataUrl } from '../lib/languageCertificateGenerator';
 import { DirectionSelect } from './DirectionSelect';
 import { canonicalizeDirection, isValidDirection } from '../constants/directions';
 
@@ -44,6 +47,7 @@ interface StudentProfileModalProps {
   projects: ProjectOrStartup[];
   achievements: Achievement[];
   certificates: CertificateItem[];
+  languageCertificates?: LanguageCertificate[];
   events: EventItem[];
   onClose: () => void;
   onOpenPdf: (url: string, name?: string, size?: number, title?: string) => void;
@@ -51,7 +55,7 @@ interface StudentProfileModalProps {
   onNotify: (type: 'success' | 'error' | 'info', message: string) => void;
 }
 
-type ProfileTab = 'overview' | 'projects' | 'startups' | 'achievements' | 'certificates' | 'events';
+type ProfileTab = 'overview' | 'projects' | 'startups' | 'achievements' | 'certificates' | 'language_certificates' | 'events';
 
 export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   isOpen,
@@ -62,6 +66,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   projects,
   achievements,
   certificates,
+  languageCertificates = [],
   events,
   onClose,
   onOpenPdf,
@@ -129,6 +134,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   );
   const studentAchievements = achievements.filter(a => a.studentId === studentId);
   const studentCertificates = certificates.filter(c => c.studentId === studentId);
+  const studentLangCerts = languageCertificates.filter(c => !c.isDeleted && c.studentId === studentId);
 
   // Events where student is registered
   const studentEvents = events.filter(e => e.participantIds?.includes(studentId));
@@ -179,6 +185,30 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
       onNotify('error', err.message || "Saqlashda xatolik.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleOpenLangCert = async (lc: LanguageCertificate) => {
+    try {
+      if (lc.fileDataUrl || lc.fileUrl) {
+        onOpenPdf(
+          lc.fileDataUrl || lc.fileUrl!,
+          lc.fileName || `Sertifikat_${lc.certificateNumber}.pdf`,
+          lc.fileSize,
+          `${lc.studentName} — ${lc.language} (${lc.certificateType})`
+        );
+      } else {
+        const dataUrl = await generateLanguageCertificatePdfDataUrl(lc);
+        onOpenPdf(
+          dataUrl,
+          `Sertifikat_${lc.studentName.replace(/\s+/g, '_')}_${lc.certificateNumber}.pdf`,
+          150000,
+          `${lc.studentName} — ${lc.language} (${lc.certificateType})`
+        );
+      }
+    } catch (err: any) {
+      console.error('PDF viewing error:', err);
+      onNotify('error', err.message || 'Sertifikat PDF faylini ochishda xatolik yuz berdi.');
     }
   };
 
@@ -285,6 +315,10 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 <span>Sertifikatlar: <strong className="text-slate-900">{studentCertificates.length}</strong></span>
               </div>
               <div className="flex items-center gap-1.5 text-slate-600 shrink-0">
+                <Languages className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Til sertifikatlari: <strong className="text-slate-900">{studentLangCerts.length}</strong></span>
+              </div>
+              <div className="flex items-center gap-1.5 text-slate-600 shrink-0">
                 <Calendar className="w-3.5 h-3.5 text-rose-600" />
                 <span>Tadbirlar: <strong className="text-slate-900">{studentEvents.length}</strong></span>
               </div>
@@ -298,6 +332,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                 { id: 'startups', label: `Startaplar (${studentStartups.length})`, icon: Rocket },
                 { id: 'achievements', label: `Yutuqlar (${studentAchievements.length})`, icon: Trophy },
                 { id: 'certificates', label: `Sertifikatlar (${studentCertificates.length})`, icon: Award },
+                { id: 'language_certificates', label: `Til sertifikatlari (${studentLangCerts.length})`, icon: Languages },
                 { id: 'events', label: `Tadbirlar (${studentEvents.length})`, icon: Calendar },
               ].map(tab => {
                 const Icon = tab.icon;
@@ -757,6 +792,86 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                                 <span>QR Verifikatsiya</span>
                               </button>
                             )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB: TIL SERTIFIKATLARI */}
+              {activeTab === 'language_certificates' && (
+                <div className="space-y-4">
+                  {studentLangCerts.length === 0 ? (
+                    <EmptyState
+                      title="Til sertifikatlari mavjud emas"
+                      description="Ushbu talaba hozircha xorijiy til sertifikatlarini kiritmagan."
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {studentLangCerts.map(lc => (
+                        <div
+                          key={lc.id}
+                          className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="p-1.5 bg-indigo-50 text-indigo-700 rounded-lg">
+                                  <Languages className="w-4 h-4" />
+                                </span>
+                                <div>
+                                  <h4 className="text-sm font-bold text-slate-900">{lc.language}</h4>
+                                  <span className="text-xs font-semibold text-slate-500">{lc.certificateType}</span>
+                                </div>
+                              </div>
+                              <span
+                                className={`px-2.5 py-0.5 text-xs font-bold rounded-full ${
+                                  lc.status === 'Tasdiqlangan'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : lc.status === 'Rad etilgan'
+                                    ? 'bg-rose-50 text-rose-800 border border-rose-200'
+                                    : 'bg-amber-50 text-amber-800 border border-amber-200'
+                                }`}
+                              >
+                                {lc.status}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 my-2.5">
+                              <span className="px-2.5 py-1 text-xs font-extrabold bg-blue-900 text-white rounded-lg shadow-2xs">
+                                Daraja: {lc.level}
+                              </span>
+                              {lc.score && (
+                                <span className="px-2.5 py-1 text-xs font-bold bg-slate-100 text-slate-800 rounded-lg border border-slate-200">
+                                  Ball: {lc.score}
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="space-y-1 text-xs text-slate-600 bg-slate-50 p-2.5 rounded-xl mb-3">
+                              <div>№ Seriya/Raqam: <strong className="font-mono text-slate-900">{lc.certificateNumber}</strong></div>
+                              <div>Berilgan sana: <strong className="text-slate-800">{lc.issueDate}</strong></div>
+                              <div>Amal qilish muddati: <strong className="text-slate-800">{lc.expiryDate || 'Muddatsiz'}</strong></div>
+                              {lc.reviewNotes && lc.status === 'Rad etilgan' && (
+                                <div className="text-rose-700 font-medium pt-1 border-t border-rose-100">
+                                  Rad etish sababi: {lc.reviewNotes}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenLangCert(lc)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors cursor-pointer border border-purple-200"
+                              title="Sertifikat PDF hujjatini ko‘rish"
+                            >
+                              <FileText className="w-3.5 h-3.5 text-red-600" />
+                              <span>PDF / Hujjatni ko‘rish</span>
+                            </button>
                           </div>
                         </div>
                       ))}

@@ -23,6 +23,7 @@ import {
   AlertCircle,
   Trash2,
   Pencil,
+  Languages,
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import {
@@ -37,6 +38,8 @@ import {
   deleteProjectOrStartup,
   createAchievement,
   createCertificateDoc,
+  createLanguageCertificate,
+  deleteLanguageCertificate,
   registerStudentForEvent,
   unregisterStudentFromEvent,
   updateStudentProfile,
@@ -47,6 +50,7 @@ import { CertificatePreviewModal } from './CertificatePreviewModal';
 import { EditProjectModal } from './EditProjectModal';
 import { downloadCertificatePdf } from '../lib/certificateGenerator';
 import { DirectionSelect } from './DirectionSelect';
+import { generateLanguageCertificatePdfDataUrl } from '../lib/languageCertificateGenerator';
 import { canonicalizeDirection } from '../constants/directions';
 import { generateStudentPortfolioPdf } from '../lib/portfolioGenerator';
 import { getDeadlineInfo } from '../lib/deadlineHelper';
@@ -57,6 +61,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
   Announcement,
 } from '../types';
@@ -68,6 +73,7 @@ interface Props {
   projects: ProjectOrStartup[];
   achievements: Achievement[];
   certificates: CertificateItem[];
+  languageCertificates?: LanguageCertificate[];
   events: EventItem[];
   announcements: Announcement[];
   onNotify: (type: 'success' | 'error' | 'info', msg: string) => void;
@@ -89,6 +95,7 @@ type TabType =
   | 'startups'
   | 'achievements'
   | 'certificates'
+  | 'language-certificates'
   | 'events'
   | 'announcements'
   | 'settings';
@@ -100,6 +107,7 @@ export const StudentDashboard: React.FC<Props> = ({
   projects = [],
   achievements = [],
   certificates = [],
+  languageCertificates = [],
   events = [],
   announcements = [],
   onNotify,
@@ -138,6 +146,9 @@ export const StudentDashboard: React.FC<Props> = ({
     a => !a.isDeleted && (a.studentId === studentId || a.studentId === currentUser.id)
   );
   const myCertificates = certificates.filter(
+    c => !c.isDeleted && (c.studentId === studentId || c.studentId === currentUser.id)
+  );
+  const myLanguageCertificates = (languageCertificates || []).filter(
     c => !c.isDeleted && (c.studentId === studentId || c.studentId === currentUser.id)
   );
 
@@ -218,6 +229,24 @@ export const StudentDashboard: React.FC<Props> = ({
   const [certUploadMessage, setCertUploadMessage] = useState<string>('');
   const [certUploadError, setCertUploadError] = useState<string | null>(null);
   const [previewCert, setPreviewCert] = useState<CertificateItem | null>(null);
+
+  // Language Certificate modal state
+  const [isLangCertModalOpen, setIsLangCertModalOpen] = useState(false);
+  const [langName, setLangName] = useState('Ingliz tili');
+  const [customLangName, setCustomLangName] = useState('');
+  const [langCertType, setLangCertType] = useState('IELTS');
+  const [customLangCertType, setCustomLangCertType] = useState('');
+  const [langLevel, setLangLevel] = useState('B2');
+  const [langScore, setLangScore] = useState('');
+  const [langNumber, setLangNumber] = useState('');
+  const [langIssueDate, setLangIssueDate] = useState(new Date().toISOString().split('T')[0]);
+  const [langExpiryDate, setLangExpiryDate] = useState('');
+  const [langFile, setLangFile] = useState<File | null>(null);
+  const [isLangSubmitting, setIsLangSubmitting] = useState(false);
+  const [langUploadStep, setLangUploadStep] = useState<UploadStep>('idle');
+  const [langUploadPercent, setLangUploadPercent] = useState<number>(0);
+  const [langUploadMessage, setLangUploadMessage] = useState<string>('');
+  const [langUploadError, setLangUploadError] = useState<string | null>(null);
 
   // Read announcements tracking
   const [readAnnouncementIds, setReadAnnouncementIds] = useState<Set<string>>(() => {
@@ -534,6 +563,173 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   };
 
+  // Handler: Add Language Certificate
+  const handleCreateLanguageCertificate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const effectiveLang = langName === 'Boshqa' ? customLangName.trim() : langName.trim();
+    const effectiveType = langCertType === 'Boshqa' ? customLangCertType.trim() : langCertType.trim();
+
+    if (!effectiveLang) {
+      onNotify('error', 'Iltimos, til nomini kiriting yoki tanlang.');
+      return;
+    }
+    if (!effectiveType) {
+      onNotify('error', 'Iltimos, sertifikat turini tanlang yoki kiriting.');
+      return;
+    }
+    if (!langNumber.trim()) {
+      onNotify('error', 'Iltimos, sertifikat seriyasi va raqamini kiriting.');
+      return;
+    }
+    if (!langFile) {
+      onNotify('error', 'Iltimos, sertifikatning PDF yoki skanerlangan nusxasini yuklang.');
+      return;
+    }
+
+    const val = validatePdfFile(langFile);
+    if (!val.valid) {
+      onNotify('error', val.error || 'Fayl formati yaroqsiz.');
+      return;
+    }
+
+    setIsLangSubmitting(true);
+    setLangUploadStep('validating');
+    setLangUploadPercent(5);
+    setLangUploadMessage('Hujjat tekshirilmoqda...');
+    setLangUploadError(null);
+
+    let uploadRes: UploadResult | null = null;
+    try {
+      uploadRes = await uploadPdfDocument(
+        langFile,
+        studentId,
+        'languageCertificates',
+        info => {
+          setLangUploadStep(info.step);
+          setLangUploadPercent(info.percent);
+          setLangUploadMessage(info.message);
+        }
+      );
+
+      setLangUploadStep('saving');
+      setLangUploadPercent(100);
+      setLangUploadMessage('Ma’lumotlar Firestore’ga saqlanmoqda...');
+
+      await createLanguageCertificate({
+        studentId,
+        studentName: studentProfile?.fullName || currentUser.fullName,
+        studentPhone: studentProfile?.phone || currentUser.phone,
+        language: effectiveLang,
+        certificateType: effectiveType,
+        level: langLevel,
+        score: langScore.trim() || undefined,
+        certificateNumber: langNumber.trim(),
+        issueDate: langIssueDate,
+        expiryDate: langExpiryDate.trim() || undefined,
+        status: 'Kutilmoqda',
+        fileUrl: uploadRes.fileUrl,
+        fileName: uploadRes.fileName,
+        fileSize: uploadRes.fileSize,
+        fileType: uploadRes.fileType,
+        storagePath: uploadRes.storagePath,
+      }, {
+        id: currentUser.id,
+        fullName: currentUser.fullName,
+        role: currentUser.role,
+      });
+
+      setLangUploadStep('success');
+      setLangUploadMessage('✓ Muvaffaqiyatli saqlandi');
+      onNotify('success', 'Til sertifikati muvaffaqiyatli yuklandi va tasdiqlash uchun yuborildi!');
+
+      setTimeout(() => {
+        setIsLangCertModalOpen(false);
+        setLangName('Ingliz tili');
+        setCustomLangName('');
+        setLangCertType('IELTS');
+        setCustomLangCertType('');
+        setLangLevel('B2');
+        setLangScore('');
+        setLangNumber('');
+        setLangIssueDate(new Date().toISOString().split('T')[0]);
+        setLangExpiryDate('');
+        setLangFile(null);
+        setLangUploadStep('idle');
+        setLangUploadPercent(0);
+        setLangUploadMessage('');
+        setLangUploadError(null);
+        setIsLangSubmitting(false);
+      }, 1000);
+    } catch (err: any) {
+      console.error('Language certificate submission error:', err);
+      if (uploadRes) {
+        try {
+          await cleanupStorageFile(uploadRes.fileUrl, uploadRes.storagePath);
+        } catch (cleanErr) {
+          console.warn('Orphan cleanup error:', cleanErr);
+        }
+      }
+      const errMsg = err?.message || 'Til sertifikatini yuklashda xatolik yuz berdi. Qayta urinib ko‘ring.';
+      setLangUploadStep('error');
+      setLangUploadError(errMsg);
+      onNotify('error', errMsg);
+      setIsLangSubmitting(false);
+    }
+  };
+
+  const handleDeleteLanguageCert = (cert: LanguageCertificate) => {
+    const doDelete = async () => {
+      try {
+        await deleteLanguageCertificate(cert.id, {
+          id: currentUser.id,
+          fullName: currentUser.fullName,
+          role: currentUser.role,
+        });
+        onNotify('success', `${cert.language} sertifikati o‘chirildi.`);
+      } catch (err: any) {
+        onNotify('error', err?.message || "O'chirishda xatolik yuz berdi.");
+      }
+    };
+
+    if (onConfirmModal) {
+      onConfirmModal({
+        title: "Til sertifikatini o'chirish",
+        message: `${cert.language} (${cert.certificateType} - ${cert.level}) sertifikatini o'chirishni tasdiqlaysizmi?`,
+        confirmText: "O‘chirish",
+        isDestructive: true,
+        onConfirm: doDelete,
+      });
+    } else {
+      if (window.confirm(`${cert.language} sertifikatini o'chirishni tasdiqlaysizmi?`)) {
+        doDelete();
+      }
+    }
+  };
+
+  const handleOpenLangCert = async (lc: LanguageCertificate) => {
+    try {
+      if (lc.fileDataUrl || lc.fileUrl) {
+        onOpenPdf(
+          lc.fileDataUrl || lc.fileUrl!,
+          lc.fileName || `Sertifikat_${lc.certificateNumber}.pdf`,
+          lc.fileSize,
+          `${lc.language} (${lc.certificateType}) - ${lc.level}`
+        );
+      } else {
+        const dataUrl = await generateLanguageCertificatePdfDataUrl(lc);
+        onOpenPdf(
+          dataUrl,
+          `Sertifikat_${lc.studentName.replace(/\s+/g, '_')}_${lc.certificateNumber}.pdf`,
+          150000,
+          `${lc.language} (${lc.certificateType}) - ${lc.level}`
+        );
+      }
+    } catch (err: any) {
+      console.error('PDF viewing error:', err);
+      onNotify('error', err.message || 'Sertifikat PDF faylini ochishda xatolik yuz berdi.');
+    }
+  };
+
   // Event registration toggle & competition project selection
   const handleToggleEventReg = async (event: EventItem) => {
     const isRegistered = event.participantIds?.includes(studentId);
@@ -619,6 +815,7 @@ export const StudentDashboard: React.FC<Props> = ({
         startups: myStartups,
         achievements: myAchievements,
         certificates: myCertificates,
+        languageCertificates: myLanguageCertificates,
         events: events.filter(e => e.participantIds?.includes(studentId)),
       });
       onNotify('success', 'Rasmiy talaba portfoliosi (PDF) muvaffaqiyatli shakllantirildi va yuklab olindi.');
@@ -712,6 +909,7 @@ export const StudentDashboard: React.FC<Props> = ({
             <option value="startups">🚀 Startaplarim ({myStartups.length})</option>
             <option value="achievements">🏆 Yutuqlarim ({myAchievements.length})</option>
             <option value="certificates">🎖️ Sertifikatlarim ({myCertificates.length})</option>
+            <option value="language-certificates">🌐 Til sertifikatlari ({myLanguageCertificates.length})</option>
             <option value="events">📅 Tadbirlar ({events.length})</option>
             <option value="announcements">🔔 E'lonlar ({announcements.length})</option>
           </select>
@@ -727,6 +925,7 @@ export const StudentDashboard: React.FC<Props> = ({
           { id: 'startups', label: `Startaplarim (${myStartups.length})`, icon: Rocket },
           { id: 'achievements', label: `Yutuqlarim (${myAchievements.length})`, icon: Trophy },
           { id: 'certificates', label: `Sertifikatlarim (${myCertificates.length})`, icon: Award },
+          { id: 'language-certificates', label: `Til sertifikatlari (${myLanguageCertificates.length})`, icon: Languages },
           { id: 'events', label: `Tadbirlar (${events.length})`, icon: Calendar },
           { id: 'announcements', label: `E'lonlar (${announcements.length})`, icon: Bell },
         ].map(tab => {
@@ -1355,6 +1554,172 @@ export const StudentDashboard: React.FC<Props> = ({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: TIL SERTIFIKATLARI */}
+      {activeTab === 'language-certificates' && (
+        <div className="space-y-6">
+          {/* Header & Action */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-900">Xorijiy til sertifikatlari</h2>
+                <span className="px-2.5 py-0.5 text-xs font-bold bg-indigo-50 text-indigo-800 rounded-full border border-indigo-200">
+                  {myLanguageCertificates.length} ta
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                IELTS, TOEFL, CEFR / Milliy sertifikat, TestDaF, TOPIK va boshqa xalqaro til darajalarini tasdiqlovchi hujjatlar.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setIsLangCertModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-900 hover:bg-blue-800 text-white text-xs font-semibold rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Yangi til sertifikati qo‘shish</span>
+            </button>
+          </div>
+
+          {/* Quick Stats Badges */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-[11px] font-semibold text-slate-500 uppercase block">Jami kiritilgan</span>
+              <strong className="text-xl font-bold text-slate-900 mt-1 block">{myLanguageCertificates.length}</strong>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-emerald-200 bg-emerald-50/30 shadow-2xs">
+              <span className="text-[11px] font-semibold text-emerald-800 uppercase block">Tasdiqlangan</span>
+              <strong className="text-xl font-bold text-emerald-700 mt-1 block">
+                {myLanguageCertificates.filter(c => c.status === 'Tasdiqlangan').length}
+              </strong>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-amber-200 bg-amber-50/30 shadow-2xs">
+              <span className="text-[11px] font-semibold text-amber-800 uppercase block">Kutilmoqda</span>
+              <strong className="text-xl font-bold text-amber-700 mt-1 block">
+                {myLanguageCertificates.filter(c => c.status === 'Kutilmoqda').length}
+              </strong>
+            </div>
+            <div className="bg-white p-3.5 rounded-2xl border border-indigo-200 bg-indigo-50/30 shadow-2xs">
+              <span className="text-[11px] font-semibold text-indigo-800 uppercase block">Yuqori daraja (C1/C2)</span>
+              <strong className="text-xl font-bold text-indigo-700 mt-1 block">
+                {myLanguageCertificates.filter(c => c.level === 'C1' || c.level === 'C2').length}
+              </strong>
+            </div>
+          </div>
+
+          {/* List or Empty State */}
+          {myLanguageCertificates.length === 0 ? (
+            <EmptyState
+              title="Til sertifikatlari mavjud emas"
+              description="Hozircha xorijiy til sertifikatlaringiz kiritilmagan. IELTS, CEFR yoki boshqa til darajangizni tasdiqlovchi sertifikatni yuklang."
+              action={{
+                label: "Til sertifikati qo'shish",
+                onClick: () => setIsLangCertModalOpen(true),
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {myLanguageCertificates.map(lc => {
+                const isHighLevel = lc.level === 'C1' || lc.level === 'C2';
+                const isB2 = lc.level === 'B2';
+                return (
+                  <div
+                    key={lc.id}
+                    className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-col justify-between hover:shadow-sm transition-all"
+                  >
+                    <div>
+                      {/* Top Header */}
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center shrink-0 border border-indigo-100">
+                            <Languages className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900 leading-tight">{lc.language}</h3>
+                            <span className="text-xs font-semibold text-slate-500">{lc.certificateType}</span>
+                          </div>
+                        </div>
+
+                        {renderStatusBadge(lc.status)}
+                      </div>
+
+                      {/* Level and Score Badges */}
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <span
+                          className={`px-3 py-1 text-xs font-extrabold rounded-lg shadow-2xs ${
+                            isHighLevel
+                              ? 'bg-indigo-900 text-white'
+                              : isB2
+                              ? 'bg-blue-900 text-white'
+                              : 'bg-slate-800 text-white'
+                          }`}
+                        >
+                          Daraja: {lc.level}
+                        </span>
+                        {lc.score && (
+                          <span className="px-3 py-1 text-xs font-bold bg-amber-50 text-amber-900 rounded-lg border border-amber-200">
+                            Ball: {lc.score}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Details Box */}
+                      <div className="space-y-1.5 text-xs text-slate-600 bg-slate-50 p-3 rounded-xl mb-3 border border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">№ Seriya/Raqam:</span>
+                          <strong className="font-mono text-slate-900">{lc.certificateNumber}</strong>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Berilgan sana:</span>
+                          <span className="font-medium text-slate-800">{lc.issueDate}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-400">Amal qilish muddati:</span>
+                          <span className="font-medium text-slate-800">{lc.expiryDate || 'Muddatsiz'}</span>
+                        </div>
+                      </div>
+
+                      {/* Rejection Notes */}
+                      {lc.status === 'Rad etilgan' && lc.reviewNotes && (
+                        <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 mb-3 space-y-0.5">
+                          <div className="font-bold flex items-center gap-1 text-rose-900">
+                            <AlertCircle className="w-3.5 h-3.5" />
+                            <span>Rad etish sababi:</span>
+                          </div>
+                          <p className="leading-relaxed">{lc.reviewNotes}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenLangCert(lc)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-900 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors cursor-pointer border border-purple-200"
+                        title="Sertifikat PDF hujjatini ko‘rish"
+                      >
+                        <FileText className="w-3.5 h-3.5 text-red-600" />
+                        <span>PDF Hujjatni ko‘rish</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteLanguageCert(lc)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                        title="O‘chirish"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>O‘chirish</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -2257,6 +2622,302 @@ export const StudentDashboard: React.FC<Props> = ({
         onClose={() => setPreviewCert(null)}
         certificate={previewCert}
       />
+
+      {/* MODAL: ADD LANGUAGE CERTIFICATE */}
+      {isLangCertModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-6 sm:p-8 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-100">
+                  <Languages className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Til sertifikati qo‘shish</h3>
+                  <p className="text-xs text-slate-500">IELTS, CEFR, TOEFL yoki boshqa til darajangizni tasdiqlang</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsLangCertModalOpen(false)}
+                disabled={isLangSubmitting}
+                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLanguageCertificate} className="space-y-4">
+              {/* Language selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Xorijiy til <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={langName}
+                  onChange={e => setLangName(e.target.value)}
+                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                >
+                  <option value="Ingliz tili">Ingliz tili</option>
+                  <option value="Nemis tili">Nemis tili</option>
+                  <option value="Fransuz tili">Fransuz tili</option>
+                  <option value="Rus tili">Rus tili</option>
+                  <option value="Koreys tili">Koreys tili</option>
+                  <option value="Xitoy tili">Xitoy tili</option>
+                  <option value="Yapon tili">Yapon tili</option>
+                  <option value="Arab tili">Arab tili</option>
+                  <option value="Turk tili">Turk tili</option>
+                  <option value="Boshqa">Boshqa til...</option>
+                </select>
+              </div>
+
+              {langName === 'Boshqa' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Til nomini kiriting <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customLangName}
+                    onChange={e => setCustomLangName(e.target.value)}
+                    placeholder="Masalan: Ispan tili, Italyan tili..."
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  />
+                </div>
+              )}
+
+              {/* Certificate Type */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Sertifikat turi <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={langCertType}
+                    onChange={e => setLangCertType(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  >
+                    <optgroup label="Ingliz tili">
+                      <option value="IELTS">IELTS</option>
+                      <option value="TOEFL iBT">TOEFL iBT</option>
+                      <option value="CEFR / Milliy sertifikat">CEFR / Milliy sertifikat (DTM / Bilim agentligi)</option>
+                      <option value="Cambridge (FCE/CAE/CPE)">Cambridge (FCE / CAE / CPE)</option>
+                      <option value="PTE Academic">PTE Academic</option>
+                    </optgroup>
+                    <optgroup label="Nemis tili">
+                      <option value="Goethe-Zertifikat">Goethe-Zertifikat</option>
+                      <option value="TestDaF">TestDaF</option>
+                      <option value="DSD">DSD</option>
+                      <option value="Nemis tili (Milliy/CEFR)">Nemis tili (Milliy/CEFR)</option>
+                    </optgroup>
+                    <optgroup label="Fransuz tili">
+                      <option value="DELF / DALF">DELF / DALF</option>
+                      <option value="TCF">TCF</option>
+                      <option value="Fransuz tili (Milliy/CEFR)">Fransuz tili (Milliy/CEFR)</option>
+                    </optgroup>
+                    <optgroup label="Boshqa tillar">
+                      <option value="TOPIK (Koreys)">TOPIK (Koreys)</option>
+                      <option value="HSK (Xitoy)">HSK (Xitoy)</option>
+                      <option value="JLPT (Yapon)">JLPT (Yapon)</option>
+                      <option value="TRKI / ТРКИ (Rus)">TRKI / ТРКИ (Rus)</option>
+                      <option value="TÖMER (Turk)">TÖMER (Turk)</option>
+                      <option value="Boshqa">Boshqa xalqaro / milliy sertifikat</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Daraja (Level) <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={langLevel}
+                    onChange={e => setLangLevel(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 font-bold"
+                  >
+                    <option value="C2">C2 — Mastery (Eng yuqori)</option>
+                    <option value="C1">C1 — Effective Operational Proficiency</option>
+                    <option value="B2">B2 — Vantage (Oliy ta'lim talabi)</option>
+                    <option value="B1">B1 — Threshold</option>
+                    <option value="A2">A2 — Waystage</option>
+                    <option value="A1">A1 — Breakthrough</option>
+                  </select>
+                </div>
+              </div>
+
+              {langCertType === 'Boshqa' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Sertifikat tizimi nomi <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={customLangCertType}
+                    onChange={e => setCustomLangCertType(e.target.value)}
+                    placeholder="Masalan: TestAS, Duolingo, yoki maxsus milliy imtihon..."
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  />
+                </div>
+              )}
+
+              {/* Score and Certificate Number */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Umumiy ball (Overall band/score)
+                  </label>
+                  <input
+                    type="text"
+                    value={langScore}
+                    onChange={e => setLangScore(e.target.value)}
+                    placeholder="Masalan: 7.5, 95, Level 5, 72 ball"
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Seriya va raqami <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={langNumber}
+                    onChange={e => setLangNumber(e.target.value)}
+                    placeholder="Masalan: 23UZ0012345 yoki IELTS raqami"
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl font-mono focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  />
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Berilgan sana <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={langIssueDate}
+                    onChange={e => setLangIssueDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                    Amal qilish muddati (Ixtiyoriy)
+                  </label>
+                  <input
+                    type="date"
+                    value={langExpiryDate}
+                    onChange={e => setLangExpiryDate(e.target.value)}
+                    placeholder="Muddatsiz bo'lsa bo'sh qoldiring"
+                    className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">
+                    Muddatsiz bo‘lsa bo‘sh qoldiring (masalan milliy sertifikatlar)
+                  </span>
+                </div>
+              </div>
+
+              {/* File upload */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  Sertifikat nusxasi (PDF yoki skaner fayl) <span className="text-red-500">*</span>
+                </label>
+                <div className="relative border-2 border-dashed border-slate-200 hover:border-blue-900/40 rounded-2xl p-4 text-center transition-colors bg-slate-50/50">
+                  <input
+                    type="file"
+                    required
+                    accept=".pdf,application/pdf,image/png,image/jpeg,image/webp"
+                    onChange={e => {
+                      if (e.target.files && e.target.files[0]) {
+                        setLangFile(e.target.files[0]);
+                      }
+                    }}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  />
+                  <div className="flex flex-col items-center justify-center gap-1.5">
+                    <FileText className="w-8 h-8 text-indigo-600" />
+                    <span className="text-xs font-semibold text-slate-700">
+                      {langFile ? langFile.name : 'Sertifikat faylini tanlang (PDF yoki rasm)'}
+                    </span>
+                    <span className="text-[10px] text-slate-400">
+                      {langFile
+                        ? `${(langFile.size / (1024 * 1024)).toFixed(2)} MB`
+                        : 'Maksimal 10 MB. PDF formati tavsiya etiladi'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress and status */}
+              {isLangSubmitting && langUploadStep !== 'idle' && (
+                <div className="space-y-1.5 p-3 bg-indigo-50/70 border border-indigo-200 rounded-xl">
+                  <div className="flex items-center justify-between text-xs font-medium text-indigo-950">
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-900" />
+                      {langUploadMessage || 'Yuklanmoqda...'}
+                    </span>
+                    <span className="font-mono font-bold text-indigo-900">{langUploadPercent}%</span>
+                  </div>
+                  <div className="w-full bg-indigo-200/60 h-2 rounded-full overflow-hidden">
+                    <div
+                      className="bg-indigo-900 h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${langUploadPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {langUploadStep === 'error' && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-2 text-xs text-red-800">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span className="truncate">{langUploadError || 'Xatolik yuz berdi.'}</span>
+                  </div>
+                </div>
+              )}
+
+              {langUploadStep === 'success' && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800 font-semibold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>✓ Muvaffaqiyatli saqlandi</span>
+                </div>
+              )}
+
+              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsLangCertModalOpen(false)}
+                  disabled={isLangSubmitting}
+                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  Bekor qilish
+                </button>
+                <button
+                  type="submit"
+                  disabled={isLangSubmitting || !langFile}
+                  className="px-5 py-2.5 bg-blue-900 hover:bg-blue-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+                >
+                  {isLangSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Yuklanmoqda...</span>
+                    </>
+                  ) : (
+                    <span>Saqlash va yuborish</span>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* EDIT PROJECT / STARTUP MODAL */}
       {isEditProjectModalOpen && editingProject && (

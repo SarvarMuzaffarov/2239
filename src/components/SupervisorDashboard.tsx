@@ -38,6 +38,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
 } from '../types';
 
@@ -48,6 +49,7 @@ interface Props {
   projects: ProjectOrStartup[];
   achievements: Achievement[];
   certificates?: CertificateItem[];
+  languageCertificates?: LanguageCertificate[];
   events?: EventItem[];
   onNotify?: (type: 'success' | 'error' | 'info', msg: string) => void;
   onOpenPdf: (url: string, name?: string, size?: number, title?: string) => void;
@@ -64,6 +66,7 @@ export const SupervisorDashboard: React.FC<Props> = ({
   projects = [],
   achievements = [],
   certificates = [],
+  languageCertificates = [],
   events = [],
   onNotify,
   onOpenPdf,
@@ -204,6 +207,7 @@ export const SupervisorDashboard: React.FC<Props> = ({
       const studentStartups = projects.filter(p => p.studentId === student.id && p.type === 'startap');
       const studentAchievements = achievements.filter(a => a.studentId === student.id);
       const studentCertificates = (certificates || []).filter(c => c.studentId === student.id);
+      const studentLangCerts = (languageCertificates || []).filter(c => c.studentId === student.id);
       const studentEvents = (events || []).filter(e => e.participantIds?.includes(student.id));
 
       await generateStudentPortfolioPdf({
@@ -213,6 +217,7 @@ export const SupervisorDashboard: React.FC<Props> = ({
         startups: studentStartups,
         achievements: studentAchievements,
         certificates: studentCertificates,
+        languageCertificates: studentLangCerts,
         events: studentEvents,
       });
       onNotify?.('success', `${student.fullName} portfoliosi (PDF) muvaffaqiyatli shakllantirildi!`);

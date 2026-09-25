@@ -10,6 +10,7 @@ export type PermissionResource =
   | 'startups'
   | 'achievements'
   | 'certificates'
+  | 'language_certificates'
   | 'competitions'
   | 'statistics'
   | 'excel'
@@ -314,5 +315,35 @@ export interface DashboardStats {
   eventsCount: number;
   pendingApprovalsCount: number;
   courseDistribution: Record<number, number>;
+}
+
+export interface LanguageCertificate {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentPhone?: string;
+  language: string; // Masalan: "Ingliz tili", "Nemis tili", "Fransuz tili", "Rus tili", "Koreys tili", "Xitoy tili", "Yapon tili", "Arab tili", "Turk tili", "Boshqa"
+  certificateType: string; // Masalan: "IELTS", "TOEFL iBT", "CEFR / Milliy sertifikat", "Cambridge", "PTE", "Goethe-Zertifikat", "TestDaF", "DELF / DALF", "TCF", "TOPIK", "HSK", "JLPT", "TRKI / Milliy", "Boshqa"
+  level: string; // Masalan: "A1", "A2", "B1", "B2", "C1", "C2"
+  score?: string; // Masalan: "7.5", "95", "Level 4", "70 ball"
+  certificateNumber: string; // Seriya va raqami
+  issueDate: string; // Berilgan sana
+  expiryDate?: string; // Amal qilish muddati (yoki "Muddatsiz")
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+  fileType?: string;
+  storagePath?: string;
+  fileDataUrl?: string;
+  status: 'Kutilmoqda' | 'Tasdiqlangan' | 'Rad etilgan';
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
+  reviewedByName?: string;
+  reviewNotes?: string;
 }
 

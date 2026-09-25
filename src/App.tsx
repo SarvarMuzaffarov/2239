@@ -31,6 +31,7 @@ import {
   subscribeProjectsAndStartups,
   subscribeAchievements,
   subscribeCertificates,
+  subscribeLanguageCertificates,
   subscribeEvents,
   subscribeAnnouncements,
   subscribeUsers,
@@ -47,6 +48,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
   Announcement,
   AuditLog,
@@ -65,6 +67,7 @@ export default function App() {
   const [projects, setProjects] = useState<ProjectOrStartup[]>([]);
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
+  const [languageCertificates, setLanguageCertificates] = useState<LanguageCertificate[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -300,6 +303,7 @@ export default function App() {
     const unsubProjects = subscribeProjectsAndStartups(setProjects);
     const unsubAchievements = subscribeAchievements(setAchievements);
     const unsubCertificates = subscribeCertificates(setCertificates);
+    const unsubLanguageCertificates = subscribeLanguageCertificates(setLanguageCertificates);
     const unsubEvents = subscribeEvents(setEvents);
     const unsubAnnouncements = subscribeAnnouncements(setAnnouncements);
 
@@ -318,6 +322,7 @@ export default function App() {
       unsubProjects();
       unsubAchievements();
       unsubCertificates();
+      unsubLanguageCertificates();
       unsubEvents();
       unsubAnnouncements();
       unsubUsers();
@@ -433,6 +438,7 @@ export default function App() {
         projects={projects}
         achievements={achievements}
         certificates={certificates}
+        languageCertificates={languageCertificates}
         events={events}
         onClose={handleCloseStudentProfile}
         onOpenPdf={(url, name, size, title) =>
@@ -659,6 +665,7 @@ export default function App() {
             projects={projects}
             achievements={achievements}
             certificates={certificates}
+            languageCertificates={languageCertificates}
             events={events}
             announcements={announcements}
             onNotify={notify}
@@ -695,6 +702,7 @@ export default function App() {
             projects={projects}
             achievements={achievements}
             certificates={certificates}
+            languageCertificates={languageCertificates}
             events={events}
             onNotify={notify}
             onUpdateCurrentUser={handleUpdateCurrentUser}
@@ -719,6 +727,7 @@ export default function App() {
             projects={projects}
             achievements={achievements}
             certificates={certificates}
+            languageCertificates={languageCertificates}
             events={events}
             announcements={announcements}
             auditLogs={auditLogs}
