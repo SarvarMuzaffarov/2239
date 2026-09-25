@@ -69,6 +69,13 @@ export const PdfViewerModal: React.FC<Props> = ({
   const formattedSize = fileSize ? `${(fileSize / (1024 * 1024)).toFixed(2)} MB` : undefined;
   const activeUrl = resolvedUrl || fileUrl;
 
+  const isImage =
+    activeUrl.startsWith('data:image/') ||
+    fileName.toLowerCase().endsWith('.jpg') ||
+    fileName.toLowerCase().endsWith('.jpeg') ||
+    fileName.toLowerCase().endsWith('.png') ||
+    fileName.toLowerCase().endsWith('.webp');
+
   const handleDownload = () => {
     const a = document.createElement('a');
     a.href = activeUrl;
@@ -145,20 +152,20 @@ export const PdfViewerModal: React.FC<Props> = ({
               type="button"
               onClick={handleDownload}
               disabled={isLoading || !!loadError}
-              className="min-w-[40px] h-10 px-2.5 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-xl transition-colors"
+              className="min-w-[40px] h-10 px-2.5 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 disabled:opacity-50 border border-blue-200 rounded-xl transition-colors cursor-pointer"
               title="Yuklab olish"
             >
               <Download className="w-4 h-4" />
               <span className="hidden sm:inline">Yuklab olish</span>
             </button>
 
-            {activeUrl.startsWith('http') && (
+            {(activeUrl.startsWith('http') || activeUrl.startsWith('blob:')) && (
               <a
                 href={activeUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="min-w-[40px] h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
-                title="Brauzerda alohida ochish"
+                title="Brauzerda alohida oynada ochish"
               >
                 <ExternalLink className="w-4 h-4" />
               </a>
@@ -189,7 +196,7 @@ export const PdfViewerModal: React.FC<Props> = ({
           {isLoading ? (
             <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
               <Loader2 className="w-8 h-8 text-blue-900 animate-spin" />
-              <p className="text-sm font-semibold text-slate-800">PDF hujjat tayyorlanmoqda...</p>
+              <p className="text-sm font-semibold text-slate-800">Hujjat tayyorlanmoqda...</p>
               <p className="text-xs text-slate-500">Iltimos kuting</p>
             </div>
           ) : loadError ? (
@@ -216,6 +223,15 @@ export const PdfViewerModal: React.FC<Props> = ({
                 Qayta urinish
               </button>
             </div>
+          ) : isImage ? (
+            <div className="w-full h-full flex items-center justify-center p-3 overflow-auto">
+              <img
+                src={activeUrl}
+                alt={fileName}
+                className="max-w-full max-h-full object-contain rounded-xl shadow-xs transition-transform duration-150"
+                style={{ transform: `scale(${zoomLevel / 100})` }}
+              />
+            </div>
           ) : (
             <div
               className="w-full h-full transition-transform duration-150 origin-top-left"
@@ -224,26 +240,32 @@ export const PdfViewerModal: React.FC<Props> = ({
                 height: zoomLevel !== 100 ? `${zoomLevel}%` : '100%',
               }}
             >
-              <iframe
-                src={activeUrl}
-                title={fileName}
-                className="w-full h-full min-h-[400px] rounded-xl border border-slate-200 bg-white"
-              />
+              <object
+                data={activeUrl}
+                type="application/pdf"
+                className="w-full h-full min-h-[450px] rounded-xl border border-slate-200 bg-white"
+              >
+                <iframe
+                  src={activeUrl}
+                  title={fileName}
+                  className="w-full h-full min-h-[450px] rounded-xl border-none"
+                />
+              </object>
             </div>
           )}
         </div>
 
         {/* Mobile helper footer */}
         <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-[11px] text-slate-500">
-          <span className="truncate">Telefonda sahifa ko‘rinmasa «Yuklab olish» tugmasini bosing</span>
-          {activeUrl.startsWith('http') && (
+          <span className="truncate">Telefonda yoki brauzerda sahifa to‘liq ko‘rinmasa «Yuklab olish» tugmasini bosing</span>
+          {(activeUrl.startsWith('http') || activeUrl.startsWith('blob:')) && (
             <a
               href={activeUrl}
               target="_blank"
               rel="noreferrer"
               className="text-blue-900 font-semibold underline shrink-0 ml-2"
             >
-              To‘g‘ridan-to‘g‘ri ochish
+              Alohida oynada ochish
             </a>
           )}
         </div>

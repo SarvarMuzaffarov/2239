@@ -351,12 +351,36 @@ export async function uploadPdfDocument(
 export async function resolvePdfUrl(fileUrl: string): Promise<string> {
   if (!fileUrl) return '';
 
-  // Already standard HTTP(S), Blob, or Data URL
+  // Convert data:application/pdf or data:application/octet-stream to Blob URL
+  // because Chrome strictly blocks data: URLs in frames and objects
+  if (
+    fileUrl.startsWith('data:application/pdf') ||
+    fileUrl.startsWith('data:application/octet-stream')
+  ) {
+    try {
+      const parts = fileUrl.split(',');
+      const mime = parts[0].split(':')[1].split(';')[0] || 'application/pdf';
+      const b64 = parts[1];
+      const bin = atob(b64);
+      const len = bin.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = bin.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: mime });
+      return URL.createObjectURL(blob);
+    } catch (e) {
+      console.warn('Error converting PDF dataUrl to blob URL:', e);
+      return fileUrl;
+    }
+  }
+
+  // Already standard HTTP(S), Blob, or Image Data URL
   if (
     fileUrl.startsWith('http://') ||
     fileUrl.startsWith('https://') ||
     fileUrl.startsWith('blob:') ||
-    fileUrl.startsWith('data:')
+    fileUrl.startsWith('data:image/')
   ) {
     return fileUrl;
   }
