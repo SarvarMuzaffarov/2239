@@ -21,6 +21,8 @@ import {
   AlertCircle,
   FolderOpen,
   Languages,
+  Eye,
+  Download,
 } from 'lucide-react';
 import type {
   UserAccount,
@@ -35,6 +37,8 @@ import type {
 import { EmptyState } from './EmptyState';
 import { assignStudentSupervisor, updateStudentProfile } from '../services/firestoreService';
 import { generateLanguageCertificatePdfDataUrl } from '../lib/languageCertificateGenerator';
+import { CertificatePreviewModal } from './CertificatePreviewModal';
+import { downloadCertificatePdf } from '../lib/certificateGenerator';
 import { DirectionSelect } from './DirectionSelect';
 import { canonicalizeDirection, isValidDirection } from '../constants/directions';
 
@@ -77,6 +81,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const [isEditingSupervisor, setIsEditingSupervisor] = useState(false);
   const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [previewCert, setPreviewCert] = useState<CertificateItem | null>(null);
 
   // Quick edit mode for admins
   const [isEditingBasic, setIsEditingBasic] = useState(false);
@@ -125,16 +130,29 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
 
   const hasAccess = isAdmin || isAssignedSupervisor || isCurrentStudent;
 
+  const sName = (student?.fullName || '').trim().toLowerCase();
+  const sPhone = (student?.phone || '').replace(/\D/g, '');
+  const sUserId = student?.userId;
+
+  const isMatchingStudent = (item: { studentId?: string; studentName?: string; studentPhone?: string }) => {
+    if (!item) return false;
+    if (item.studentId === studentId) return true;
+    if (sUserId && item.studentId === sUserId) return true;
+    if (sPhone && item.studentPhone && item.studentPhone.replace(/\D/g, '') === sPhone) return true;
+    if (sName && item.studentName && item.studentName.trim().toLowerCase() === sName) return true;
+    return false;
+  };
+
   // Real filtered data strictly for this student
   const studentProjects = projects.filter(
-    p => p.studentId === studentId && p.type === 'loyiha'
+    p => isMatchingStudent(p) && p.type === 'loyiha'
   );
   const studentStartups = projects.filter(
-    p => p.studentId === studentId && p.type === 'startap'
+    p => isMatchingStudent(p) && p.type === 'startap'
   );
-  const studentAchievements = achievements.filter(a => a.studentId === studentId);
-  const studentCertificates = certificates.filter(c => c.studentId === studentId);
-  const studentLangCerts = languageCertificates.filter(c => !c.isDeleted && c.studentId === studentId);
+  const studentAchievements = achievements.filter(a => isMatchingStudent(a));
+  const studentCertificates = certificates.filter(c => isMatchingStudent(c));
+  const studentLangCerts = languageCertificates.filter(c => !c.isDeleted && isMatchingStudent(c));
 
   // Events where student is registered
   const studentEvents = events.filter(e => e.participantIds?.includes(studentId));
@@ -769,7 +787,26 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                           </div>
 
                           <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 flex-wrap">
-                            {cert.fileUrl ? (
+                            {cert.isOfficialGenerated ? (
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewCert(cert)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>Ko‘rish</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => downloadCertificatePdf(cert)}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer border border-emerald-200"
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                  <span>PDF yuklab olish</span>
+                                </button>
+                              </div>
+                            ) : cert.fileUrl ? (
                               <button
                                 type="button"
                                 onClick={() => onOpenPdf(cert.fileDataUrl || cert.fileUrl!, cert.fileName, undefined, cert.title)}
@@ -928,6 +965,13 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Certificate Preview Modal */}
+      <CertificatePreviewModal
+        isOpen={!!previewCert}
+        onClose={() => setPreviewCert(null)}
+        certificate={previewCert}
+      />
     </div>
   );
 };

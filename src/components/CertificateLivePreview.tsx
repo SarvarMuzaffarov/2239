@@ -85,19 +85,30 @@ export const CertificateLivePreview: React.FC<CertificateLivePreviewProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dataUrl = canvas.toDataURL('image/png');
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(`
+    
+    // Create a temporary hidden iframe for seamless printing without window.open
+    const printFrame = document.createElement('iframe');
+    printFrame.style.position = 'fixed';
+    printFrame.style.right = '0';
+    printFrame.style.bottom = '0';
+    printFrame.style.width = '0';
+    printFrame.style.height = '0';
+    printFrame.style.border = '0';
+    document.body.appendChild(printFrame);
+
+    const doc = printFrame.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(`
         <!DOCTYPE html>
         <html>
           <head>
             <title>${data.title || 'Diplom'} - ${data.studentName}</title>
             <style>
               @page { size: A4 landscape; margin: 0; }
-              body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; background: #000; height: 100vh; }
+              body { margin: 0; padding: 0; display: flex; justify-content: center; align-items: center; }
               img { width: 100vw; height: 100vh; object-fit: contain; }
               @media print {
-                body { background: transparent; }
                 img { width: 100%; height: 100%; object-fit: cover; }
               }
             </style>
@@ -107,7 +118,13 @@ export const CertificateLivePreview: React.FC<CertificateLivePreviewProps> = ({
           </body>
         </html>
       `);
-      win.document.close();
+      doc.close();
+
+      setTimeout(() => {
+        try {
+          document.body.removeChild(printFrame);
+        } catch {}
+      }, 5000);
     }
   };
 

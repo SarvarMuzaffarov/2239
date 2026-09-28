@@ -210,7 +210,7 @@ export const TopStudentsManageModal: React.FC<Props> = ({
         });
       }
 
-      await saveTopActiveStudents(assignments, activeStudents, {
+      await saveTopActiveStudents(assignments, students, {
         id: currentUser.id,
         fullName: currentUser.fullName || 'Admin',
         role: currentUser.role,

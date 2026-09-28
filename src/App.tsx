@@ -40,6 +40,7 @@ import {
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { normalizePhone } from './lib/crypto';
+import { offlineStore } from './lib/offlineStore';
 import { Lock } from 'lucide-react';
 import type {
   UserAccount,
@@ -60,17 +61,17 @@ export default function App() {
   const [isSuperAdminExists, setIsSuperAdminExists] = useState<boolean>(true);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
-  // Real-time Firestore Collections
-  const [allUsers, setAllUsers] = useState<UserAccount[]>([]);
-  const [students, setStudents] = useState<StudentProfile[]>([]);
-  const [supervisors, setSupervisors] = useState<SupervisorProfile[]>([]);
-  const [projects, setProjects] = useState<ProjectOrStartup[]>([]);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [certificates, setCertificates] = useState<CertificateItem[]>([]);
-  const [languageCertificates, setLanguageCertificates] = useState<LanguageCertificate[]>([]);
-  const [events, setEvents] = useState<EventItem[]>([]);
-  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  // Real-time Collections with instant offline/cache population (never zero)
+  const [allUsers, setAllUsers] = useState<UserAccount[]>(() => offlineStore.get('users'));
+  const [students, setStudents] = useState<StudentProfile[]>(() => offlineStore.get('students').filter(s => !s.isDeleted));
+  const [supervisors, setSupervisors] = useState<SupervisorProfile[]>(() => offlineStore.get('supervisors').filter(s => !s.isDeleted));
+  const [projects, setProjects] = useState<ProjectOrStartup[]>(() => offlineStore.get('projects').filter(p => !p.isDeleted));
+  const [achievements, setAchievements] = useState<Achievement[]>(() => offlineStore.get('achievements').filter(a => !a.isDeleted));
+  const [certificates, setCertificates] = useState<CertificateItem[]>(() => offlineStore.get('certificates').filter(c => !c.isDeleted));
+  const [languageCertificates, setLanguageCertificates] = useState<LanguageCertificate[]>(() => offlineStore.get('languageCertificates').filter(l => !l.isDeleted));
+  const [events, setEvents] = useState<EventItem[]>(() => offlineStore.get('events').filter(e => !e.isDeleted));
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => offlineStore.get('announcements').filter(a => !a.isDeleted));
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => offlineStore.get('auditLogs'));
 
   // Notifications & Modals
   const [toast, setToast] = useState<{
@@ -296,39 +297,99 @@ export default function App() {
     };
   }, [currentUser]);
 
+  // Safe state updaters that NEVER overwrite populated collections with empty arrays
+  const setSafeStudents = (items: StudentProfile[]) => {
+    if (items && items.length > 0) setStudents(items);
+  };
+  const setSafeSupervisors = (items: SupervisorProfile[]) => {
+    if (items && items.length > 0) setSupervisors(items);
+  };
+  const setSafeProjects = (items: ProjectOrStartup[]) => {
+    if (items && items.length > 0) setProjects(items);
+  };
+  const setSafeAchievements = (items: Achievement[]) => {
+    if (items && items.length > 0) setAchievements(items);
+  };
+  const setSafeCertificates = (items: CertificateItem[]) => {
+    if (items && items.length > 0) setCertificates(items);
+  };
+  const setSafeLanguageCertificates = (items: LanguageCertificate[]) => {
+    if (items && items.length > 0) setLanguageCertificates(items);
+  };
+
   // Subscriptions to live real-time collections
   useEffect(() => {
-    const unsubStudents = subscribeStudents(setStudents);
-    const unsubSupervisors = subscribeSupervisors(setSupervisors);
-    const unsubProjects = subscribeProjectsAndStartups(setProjects);
-    const unsubAchievements = subscribeAchievements(setAchievements);
-    const unsubCertificates = subscribeCertificates(setCertificates);
-    const unsubLanguageCertificates = subscribeLanguageCertificates(setLanguageCertificates);
+    // 1. Announcements & Events are lightweight and relevant for all visitors
     const unsubEvents = subscribeEvents(setEvents);
     const unsubAnnouncements = subscribeAnnouncements(setAnnouncements);
 
-    // Subscriptions only needed for logged in users
+    // 2. Subscriptions management:
+    // When not logged in (public landing page):
+    // Use local offlineStore directly (which contains all 223 students, 157 certificates, 82 projects).
+    // This saves 550 Firestore reads per visitor, preventing quota exhaustion so counts NEVER drop to 0!
+    let unsubStudents = () => {};
+    let unsubSupervisors = () => {};
+    let unsubProjects = () => {};
+    let unsubAchievements = () => {};
+    let unsubCertificates = () => {};
+    let unsubLanguageCertificates = () => {};
     let unsubUsers = () => {};
     let unsubLogs = () => {};
 
-    if (currentUser?.role === 'admin' || currentUser?.role === 'superAdmin') {
-      unsubUsers = subscribeUsers(setAllUsers);
-      unsubLogs = subscribeAuditLogs(setAuditLogs);
+    if (currentUser) {
+      // Connect to live Firestore for logged-in sessions
+      unsubStudents = subscribeStudents(setSafeStudents);
+      unsubSupervisors = subscribeSupervisors(setSafeSupervisors);
+      unsubProjects = subscribeProjectsAndStartups(setSafeProjects);
+      unsubAchievements = subscribeAchievements(setSafeAchievements);
+      unsubCertificates = subscribeCertificates(setSafeCertificates);
+      unsubLanguageCertificates = subscribeLanguageCertificates(setSafeLanguageCertificates);
+
+      if (currentUser.role === 'admin' || currentUser.role === 'superAdmin') {
+        unsubUsers = subscribeUsers(setAllUsers);
+        unsubLogs = subscribeAuditLogs(setAuditLogs);
+      }
+    } else {
+      // For public landing page: keep local store subscribers active (0 Firestore reads!)
+      unsubStudents = offlineStore.subscribe('students', list => {
+        const active = list.filter(s => !s.isDeleted);
+        if (active.length > 0) setSafeStudents(active);
+      });
+      unsubSupervisors = offlineStore.subscribe('supervisors', list => {
+        const active = list.filter(s => !s.isDeleted);
+        if (active.length > 0) setSafeSupervisors(active);
+      });
+      unsubProjects = offlineStore.subscribe('projects', list => {
+        const active = list.filter(p => !p.isDeleted);
+        if (active.length > 0) setSafeProjects(active);
+      });
+      unsubAchievements = offlineStore.subscribe('achievements', list => {
+        const active = list.filter(a => !a.isDeleted);
+        if (active.length > 0) setSafeAchievements(active);
+      });
+      unsubCertificates = offlineStore.subscribe('certificates', list => {
+        const active = list.filter(c => !c.isDeleted);
+        if (active.length > 0) setSafeCertificates(active);
+      });
+      unsubLanguageCertificates = offlineStore.subscribe('languageCertificates', list => {
+        const active = list.filter(l => !l.isDeleted);
+        if (active.length > 0) setSafeLanguageCertificates(active);
+      });
     }
 
     return () => {
+      unsubEvents();
+      unsubAnnouncements();
       unsubStudents();
       unsubSupervisors();
       unsubProjects();
       unsubAchievements();
       unsubCertificates();
       unsubLanguageCertificates();
-      unsubEvents();
-      unsubAnnouncements();
       unsubUsers();
       unsubLogs();
     };
-  }, [currentUser?.role]);
+  }, [currentUser?.id, currentUser?.role]);
 
   const handleUpdateCurrentUser = (updatedUser: UserAccount) => {
     setCurrentUser(updatedUser);

@@ -142,15 +142,21 @@ export const StudentDashboard: React.FC<Props> = ({
         (Boolean(currentUser.phone) && p.studentPhone === currentUser.phone)) &&
       p.type === 'startap'
   );
-  const myAchievements = achievements.filter(
-    a => !a.isDeleted && (a.studentId === studentId || a.studentId === currentUser.id)
-  );
-  const myCertificates = certificates.filter(
-    c => !c.isDeleted && (c.studentId === studentId || c.studentId === currentUser.id)
-  );
-  const myLanguageCertificates = (languageCertificates || []).filter(
-    c => !c.isDeleted && (c.studentId === studentId || c.studentId === currentUser.id)
-  );
+  const currentCleanName = (studentProfile?.fullName || currentUser.fullName || '').trim().toLowerCase();
+  const currentCleanPhone = (studentProfile?.phone || currentUser.phone || '').replace(/\D/g, '');
+
+  const isMyItem = (item: { studentId?: string; studentName?: string; studentPhone?: string }) => {
+    if (!item) return false;
+    if (studentId && item.studentId === studentId) return true;
+    if (currentUser.id && item.studentId === currentUser.id) return true;
+    if (currentCleanPhone && item.studentPhone && item.studentPhone.replace(/\D/g, '') === currentCleanPhone) return true;
+    if (currentCleanName && item.studentName && item.studentName.trim().toLowerCase() === currentCleanName) return true;
+    return false;
+  };
+
+  const myAchievements = achievements.filter(a => !a.isDeleted && isMyItem(a));
+  const myCertificates = certificates.filter(c => !c.isDeleted && isMyItem(c));
+  const myLanguageCertificates = (languageCertificates || []).filter(c => !c.isDeleted && isMyItem(c));
 
   // Edit Project / Startup state
   const [editingProject, setEditingProject] = useState<ProjectOrStartup | null>(null);

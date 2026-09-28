@@ -3,6 +3,8 @@ import {
   initializeFirestore,
   getFirestore,
   setLogLevel,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   memoryLocalCache,
   doc,
   getDocFromServer,
@@ -12,13 +14,13 @@ import { getStorage } from 'firebase/storage';
 import rawConfig from '../../firebase-applet-config.json';
 
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || rawConfig.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || rawConfig.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || rawConfig.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || rawConfig.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || rawConfig.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || rawConfig.appId,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || rawConfig.firestoreDatabaseId,
+  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || rawConfig.apiKey,
+  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || rawConfig.authDomain,
+  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || rawConfig.projectId,
+  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || rawConfig.storageBucket,
+  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || rawConfig.messagingSenderId,
+  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || rawConfig.appId,
+  firestoreDatabaseId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_DATABASE_ID) || rawConfig.firestoreDatabaseId,
 };
 
 // Silence benign internal network transport switch logs from Firestore WebChannel
@@ -27,19 +29,33 @@ setLogLevel('silent');
 // Initialize Firebase App
 export const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-// Initialize Firestore with auto-detect long polling and zero-lock memory cache for iframe resilience
+// Initialize Firestore with persistent IndexedDB cache (multi-tab manager) to preserve free quota
 export const db = (() => {
   try {
+    const hasIndexedDb = typeof window !== 'undefined' && !!window.indexedDB;
     return initializeFirestore(
       app,
       {
         experimentalAutoDetectLongPolling: true,
-        localCache: memoryLocalCache(),
+        localCache: hasIndexedDb
+          ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+          : memoryLocalCache(),
       },
       firebaseConfig.firestoreDatabaseId
     );
-  } catch {
-    return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  } catch (err) {
+    try {
+      return initializeFirestore(
+        app,
+        {
+          experimentalAutoDetectLongPolling: true,
+          localCache: memoryLocalCache(),
+        },
+        firebaseConfig.firestoreDatabaseId
+      );
+    } catch {
+      return getFirestore(app, firebaseConfig.firestoreDatabaseId);
+    }
   }
 })();
 

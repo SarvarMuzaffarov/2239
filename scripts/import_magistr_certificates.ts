@@ -45,7 +45,7 @@ interface RawMagistrCert {
   expiryDate: string;
 }
 
-const MAGISTR_CERTIFICATES: RawMagistrCert[] = [
+export const MAGISTR_CERTIFICATES: RawMagistrCert[] = [
   {
     fullName: 'Xaydarova Mahliyo Axmat qizi',
     passport: 'AD 3898992',
