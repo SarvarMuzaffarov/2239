@@ -33,6 +33,7 @@ export const AuthView: React.FC<Props> = ({
   const [loginPhone, setLoginPhone] = useState('+998 ');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
 
@@ -64,7 +65,7 @@ export const AuthView: React.FC<Props> = ({
     }
     setIsLoginLoading(true);
     try {
-      const user = await loginWithPhone(loginPhone, loginPassword);
+      const user = await loginWithPhone(loginPhone, loginPassword, rememberMe);
       onNotify('success', `Xush kelibsiz, ${user.fullName}!`);
       onAuthSuccess(user);
     } catch (err: any) {
@@ -286,6 +287,19 @@ export const AuthView: React.FC<Props> = ({
                   {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            {/* Remember Me Option */}
+            <div className="flex items-center justify-between pt-0.5">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-600 hover:text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={e => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-900 border-slate-300 focus:ring-blue-900 cursor-pointer"
+                />
+                <span>Meni eslab qolish (shaxsiy qurilmada)</span>
+              </label>
             </div>
 
             <div className="pt-2">

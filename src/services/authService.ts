@@ -27,9 +27,9 @@ import type { UserAccount, StudentProfile, SupervisorProfile, UserRole, AdminPer
 
 const SESSION_KEY = 'iqtidorli_talabalar_current_user_v1';
 
-// Session Security: Max idle time 24 hours, absolute max 7 days
-export const MAX_IDLE_SESSION_MS = 24 * 60 * 60 * 1000; // 24 hours
-export const MAX_ABSOLUTE_SESSION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Session Security: Max idle time 2 hours (120 minutes), absolute max 12 hours
+export const MAX_IDLE_SESSION_MS = 2 * 60 * 60 * 1000; // 2 hours
+export const MAX_ABSOLUTE_SESSION_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 // Brute-force protection constants
 export const MAX_FAILED_LOGIN_ATTEMPTS = 5;
@@ -53,7 +53,9 @@ export function isSessionExpired(user: UserAccount): boolean {
 }
 
 export function refreshUserSessionActivity() {
-  const raw = localStorage.getItem(SESSION_KEY);
+  const isSession = !!sessionStorage.getItem(SESSION_KEY);
+  const storage = isSession ? sessionStorage : localStorage;
+  const raw = storage.getItem(SESSION_KEY);
   if (!raw) return;
   try {
     const cached = JSON.parse(raw) as UserAccount;
@@ -62,7 +64,7 @@ export function refreshUserSessionActivity() {
       return;
     }
     cached.sessionLastActiveAt = Date.now();
-    localStorage.setItem(SESSION_KEY, JSON.stringify(cached));
+    storage.setItem(SESSION_KEY, JSON.stringify(cached));
   } catch {
     // ignore
   }
@@ -135,7 +137,7 @@ export async function getCurrentStoredUser(): Promise<UserAccount | null> {
   }
 }
 
-export function saveUserSession(user: UserAccount) {
+export function saveUserSession(user: UserAccount, rememberMe: boolean = false) {
   // Never save hash/salt in storage, attach security timestamps
   const now = Date.now();
   const sanitized: UserAccount = {
@@ -145,33 +147,27 @@ export function saveUserSession(user: UserAccount) {
     sessionStartedAt: user.sessionStartedAt || now,
     sessionLastActiveAt: now,
   };
-  localStorage.setItem(SESSION_KEY, JSON.stringify(sanitized));
+  const str = JSON.stringify(sanitized);
+  if (rememberMe) {
+    localStorage.setItem(SESSION_KEY, str);
+    sessionStorage.removeItem(SESSION_KEY);
+  } else {
+    sessionStorage.setItem(SESSION_KEY, str);
+    localStorage.removeItem(SESSION_KEY);
+  }
 }
 
 export function clearUserSession() {
   localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_KEY);
 }
 
 /**
  * Checks if the system has at least one Super Admin.
- * If 0, the first Super Admin setup form is shown to safely initialize the university system.
+ * Super Admin already exists in the university database (+998996782239 Sarvar / +998000000001 Zafar Xakimov).
  */
 export async function checkSystemHasSuperAdmin(): Promise<boolean> {
-  if (offlineStore.hasSuperAdmin()) {
-    return true;
-  }
-  try {
-    const q = query(
-      collection(db, 'users'),
-      where('role', '==', 'superAdmin'),
-      limit(1)
-    );
-    const snap = await getDocs(q);
-    return !snap.empty;
-  } catch (err) {
-    console.warn('SuperAdmin existence check note (offline/connecting):', err);
-    return true;
-  }
+  return true;
 }
 
 /**
@@ -340,7 +336,11 @@ export async function registerStudent(data: {
 /**
  * Login with Phone and Password with Anti-Brute-Force rate limiting
  */
-export async function loginWithPhone(phone: string, password: string): Promise<UserAccount> {
+export async function loginWithPhone(
+  phone: string,
+  password: string,
+  rememberMe: boolean = false
+): Promise<UserAccount> {
   const normalized = normalizePhone(phone);
   if (!normalized) {
     throw new Error("Telefon raqami kiritilmadi.");
@@ -523,7 +523,7 @@ export async function loginWithPhone(phone: string, password: string): Promise<U
   }
 
   // Save session with activity timestamps
-  saveUserSession(user);
+  saveUserSession(user, rememberMe);
 
   await logAuditAction(
     { id: user.id, fullName: user.fullName, role: user.role },
@@ -676,13 +676,35 @@ export async function createSupervisorAccount(
 export const checkSuperAdminExists = checkSystemHasSuperAdmin;
 
 export function getCurrentUserSession(): UserAccount | null {
-  const raw = localStorage.getItem(SESSION_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as UserAccount;
-  } catch {
-    return null;
+  // 1. Check sessionStorage first (tab/browser session)
+  const sessionRaw = sessionStorage.getItem(SESSION_KEY);
+  if (sessionRaw) {
+    try {
+      const cached = JSON.parse(sessionRaw) as UserAccount;
+      if (!isSessionExpired(cached)) {
+        return cached;
+      }
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
   }
+
+  // 2. Check localStorage (if Remember Me was selected)
+  const localRaw = localStorage.getItem(SESSION_KEY);
+  if (localRaw) {
+    try {
+      const cached = JSON.parse(localRaw) as UserAccount;
+      if (!isSessionExpired(cached)) {
+        return cached;
+      }
+      localStorage.removeItem(SESSION_KEY);
+    } catch {
+      localStorage.removeItem(SESSION_KEY);
+    }
+  }
+
+  return null;
 }
 
 export async function logoutUserSession(userId?: string, fullName?: string) {

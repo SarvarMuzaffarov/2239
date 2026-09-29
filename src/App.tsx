@@ -7,7 +7,6 @@ import { DirectionDetailView } from './components/DirectionDetailView';
 import { PublicEventModal } from './components/PublicEventModal';
 import { PublicProjectModal } from './components/PublicProjectModal';
 import { PublicAnnouncementModal } from './components/PublicAnnouncementModal';
-import { InitialSetupBanner } from './components/InitialSetupBanner';
 import { StudentDashboard } from './components/StudentDashboard';
 import { SupervisorDashboard } from './components/SupervisorDashboard';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -22,7 +21,6 @@ import {
   getCurrentUserSession,
   saveUserSession,
   logoutUserSession,
-  checkSuperAdminExists,
   refreshUserSessionActivity,
 } from './services/authService';
 import {
@@ -58,7 +56,6 @@ import type {
 export default function App() {
   // Authentication & Session
   const [currentUser, setCurrentUser] = useState<UserAccount | null>(null);
-  const [isSuperAdminExists, setIsSuperAdminExists] = useState<boolean>(true);
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
 
   // Real-time Collections with instant offline/cache population (never zero)
@@ -222,8 +219,6 @@ export default function App() {
             console.warn('Session Firestore refresh note:', freshErr);
           }
         }
-        const hasSuperAdmin = await checkSuperAdminExists();
-        setIsSuperAdminExists(hasSuperAdmin);
       } catch (err) {
         console.warn('App initialization note (offline/connecting):', err);
       } finally {
@@ -631,18 +626,6 @@ export default function App() {
         ) : currentView === 'public' || !currentUser ? (
           /* PUBLIC PORTAL: HOMEPAGE OR DIRECTION DETAIL */
           <div className="py-2">
-            {!isSuperAdminExists && (
-              <div className="mb-6">
-                <InitialSetupBanner
-                  onSuccess={admin => {
-                    setIsSuperAdminExists(true);
-                    handleAuthSuccess(admin);
-                  }}
-                  onNotify={notify}
-                />
-              </div>
-            )}
-
             {selectedDirection ? (
               <DirectionDetailView
                 directionName={selectedDirection}
