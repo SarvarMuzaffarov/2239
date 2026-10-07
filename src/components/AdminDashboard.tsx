@@ -1204,6 +1204,8 @@ export const AdminDashboard: React.FC<Props> = ({
     signatoryName: string;
     signatoryRole: string;
     studentDirection?: string;
+    designId?: string;
+    backgroundPattern?: string;
   }) => {
     setIsCertIssuing(true);
     try {

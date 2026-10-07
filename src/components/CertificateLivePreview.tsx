@@ -64,6 +64,8 @@ export const CertificateLivePreview: React.FC<CertificateLivePreviewProps> = ({
     data.documentType,
     data.organizationName,
     data.studentDirection,
+    data.designId,
+    data.backgroundPattern,
   ]);
 
   const handleDownload = async () => {

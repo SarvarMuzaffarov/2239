@@ -36,6 +36,8 @@ import {
   downloadBulkCertificatesPdf,
 } from '../lib/certificateGenerator';
 import { CertificateLivePreview } from './CertificateLivePreview';
+import { CertificateDesignSelector } from './CertificateDesignSelector';
+import type { CertificateDesignId, BackgroundPatternId } from '../lib/certificateStyles';
 import { canonicalizeDirection } from '../constants/directions';
 
 export type IssuanceMode = 'single' | 'group' | 'selection' | 'all';
@@ -63,6 +65,8 @@ export interface SingleCertificatePayload {
   signatoryName: string;
   signatoryRole: string;
   studentDirection?: string;
+  designId?: string;
+  backgroundPattern?: string;
 }
 
 interface IssueCertificateModalProps {
@@ -168,6 +172,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   // Active view tab in modal: 'editor' or 'preview'
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('winner');
+  const [selectedDesignId, setSelectedDesignId] = useState<CertificateDesignId>('royal_gold');
+  const [selectedPatternId, setSelectedPatternId] = useState<BackgroundPatternId>('guilloche');
   const [previewIndex, setPreviewIndex] = useState<number>(0);
   const [isBulkDownloading, setIsBulkDownloading] = useState<boolean>(false);
 
@@ -383,6 +389,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
       signatoryDegree: signatoryDegree.trim(),
       additionalSignatureText: additionalSignatureText.trim(),
       studentDirection: effectiveDirection,
+      designId: selectedDesignId,
+      backgroundPattern: selectedPatternId,
     };
   }, [
     currentPreviewStudent,
@@ -410,6 +418,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
     signatoryRole,
     signatoryDegree,
     additionalSignatureText,
+    selectedDesignId,
+    selectedPatternId,
   ]);
 
   // Filtered students for 'selection' mode
@@ -491,6 +501,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
         signatoryRole: signatoryRole.trim(),
         signatoryDegree: signatoryDegree.trim(),
         studentDirection: studentDirection.trim(),
+        designId: selectedDesignId,
+        backgroundPattern: selectedPatternId,
       });
     } else {
       if (effectiveStudentsList.length === 0) {
@@ -523,6 +535,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
           signatoryRole: signatoryRole.trim(),
           signatoryDegree: signatoryDegree.trim(),
           studentDirection: st.directionText,
+          designId: selectedDesignId,
+          backgroundPattern: selectedPatternId,
         };
       });
 
@@ -638,6 +652,16 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
                 );
               })}
             </div>
+          </div>
+
+          {/* Certificate Design & Background Styles Selector (10 Distinct Styles) */}
+          <div className="mb-6 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200 shadow-2xs">
+            <CertificateDesignSelector
+              selectedDesignId={selectedDesignId}
+              selectedPatternId={selectedPatternId}
+              onSelectDesign={setSelectedDesignId}
+              onSelectPattern={setSelectedPatternId}
+            />
           </div>
 
           {activeTab === 'preview' ? (

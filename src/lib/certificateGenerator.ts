@@ -1,5 +1,34 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
+import {
+  CertificateDesignId,
+  BackgroundPatternId,
+  CertificateDesign,
+  BackgroundPatternOption,
+  CERTIFICATE_DESIGNS,
+  BACKGROUND_PATTERNS,
+  getCertificateDesign,
+  getBackgroundPattern,
+} from './certificateStyles';
+import {
+  drawBackgroundPattern,
+  drawCertificateFrame,
+  drawCertificateHeaderDivider,
+  drawAwardMedalForDesign,
+} from './certificateStylesRenderers';
+
+export {
+  CERTIFICATE_DESIGNS,
+  BACKGROUND_PATTERNS,
+  getCertificateDesign,
+  getBackgroundPattern,
+};
+export type {
+  CertificateDesignId,
+  BackgroundPatternId,
+  CertificateDesign,
+  BackgroundPatternOption,
+};
 
 export interface CertificateData {
   certificateNumber: string;
@@ -27,6 +56,8 @@ export interface CertificateData {
   footerText?: string;
   additionalSignatureText?: string;
   verificationUrl?: string;
+  designId?: string;
+  backgroundPattern?: string;
 }
 
 export interface PresetTemplate {
@@ -313,10 +344,14 @@ export async function renderCertificateToCanvas(
   // Award level badge text for seal
   const awardLevel = data.awardLevel?.trim() || docSubtitle;
 
+  // Resolve chosen Certificate Design and Background Pattern
+  const design = getCertificateDesign(data.designId);
+  const patternId = (data.backgroundPattern as BackgroundPatternId) || design.defaultPattern;
+
   // ----------------------------------------------------
-  // 1. BASE CANVAS BACKGROUND: Pure white with noble soft luxury aura
+  // 1. BASE CANVAS BACKGROUND: With chosen design warmth & palette
   // ----------------------------------------------------
-  ctx.fillStyle = '#ffffff';
+  ctx.fillStyle = design.bgCenter;
   ctx.fillRect(0, 0, width, height);
 
   // Soft luxurious radial warmth from center
@@ -329,20 +364,27 @@ export async function renderCertificateToCanvas(
     height * 0.48,
     1480
   );
-  bgGrad.addColorStop(0, '#ffffff');
-  bgGrad.addColorStop(0.7, '#fcfcf9');
-  bgGrad.addColorStop(1, '#f8f7f3');
+  bgGrad.addColorStop(0, design.bgCenter);
+  bgGrad.addColorStop(0.7, design.bgMid);
+  bgGrad.addColorStop(1, design.bgEdge);
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, width, height);
   ctx.restore();
 
-  // Banknote security micro-guilloché background curves (subtle security lines)
-  drawSecurityGuillocheWaves(ctx, width, height);
+  // Draw selected background pattern
+  drawBackgroundPattern(
+    ctx,
+    width,
+    height,
+    patternId,
+    design.primaryColor,
+    design.secondaryColor
+  );
 
   // ----------------------------------------------------
   // 2. TWO-LAYER PREMIUM FRAME WITH GEOMETRIC CORNER ELEMENTS
   // ----------------------------------------------------
-  drawClassicalArchitecturalFrame(ctx, width, height);
+  drawCertificateFrame(ctx, width, height, design);
 
   // ----------------------------------------------------
   // 3. TOP CENTRAL MINISTRY & UNIVERSITY HEADERS
@@ -351,7 +393,7 @@ export async function renderCertificateToCanvas(
   ctx.textAlign = 'center';
 
   // Ministry of Higher Education, Science and Innovations
-  ctx.fillStyle = '#0b1f3a';
+  ctx.fillStyle = design.primaryColor;
   ctx.font = 'bold 26px "Times New Roman", Georgia, serif';
   ctx.letterSpacing = '3px';
   ctx.fillText(
@@ -361,7 +403,7 @@ export async function renderCertificateToCanvas(
   );
 
   // Tashkent Chemical-Technological Institute Yangiyer Branch
-  ctx.fillStyle = '#0b1f3a';
+  ctx.fillStyle = design.primaryColor;
   ctx.font = 'bold 42px "Times New Roman", Georgia, serif';
   ctx.letterSpacing = '2px';
   ctx.fillText(
@@ -370,8 +412,8 @@ export async function renderCertificateToCanvas(
     305
   );
 
-  // Classical ornamental gold geometric divider
-  drawHeaderDivider(ctx, width / 2, 350, 780);
+  // Style-specific ornamental divider
+  drawCertificateHeaderDivider(ctx, width / 2, 350, 780, design);
   ctx.restore();
 
   // ----------------------------------------------------
@@ -381,12 +423,12 @@ export async function renderCertificateToCanvas(
   ctx.save();
   ctx.textAlign = 'center';
 
-  // Refined ambient warm-gold glow
-  ctx.shadowColor = 'rgba(197, 160, 89, 0.28)';
-  ctx.shadowBlur = 16;
-  ctx.shadowOffsetY = 4;
+  // Refined ambient warm glow
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 3;
 
-  ctx.fillStyle = '#0b1f3a';
+  ctx.fillStyle = design.primaryColor;
   // Adapt font size dynamically if title is extraordinarily long
   let mainTitleFontSize = 96;
   ctx.font = `900 ${mainTitleFontSize}px "Times New Roman", Georgia, serif`;
@@ -401,7 +443,7 @@ export async function renderCertificateToCanvas(
 
   // Subtitle / Preamble (paired closely with the title)
   // “Ushbu sertifikat iqtidorli talaba sifatida erishgan yuksak natijalari hamda faoliyati uchun taqdim etiladi.”
-  ctx.fillStyle = '#334155';
+  ctx.fillStyle = design.subtextColor;
   ctx.font = 'italic 600 30px Georgia, "Times New Roman", serif';
   ctx.letterSpacing = '0.5px';
   ctx.fillText(presentedTo, width / 2, 550);
@@ -423,7 +465,7 @@ export async function renderCertificateToCanvas(
     studentWidth = ctx.measureText(studentName).width;
   }
 
-  ctx.fillStyle = '#0b1f3a'; // rich deep navy obsidian
+  ctx.fillStyle = design.primaryColor;
   const studentY = 680;
   ctx.fillText(studentName, width / 2, studentY);
 
@@ -431,24 +473,24 @@ export async function renderCertificateToCanvas(
   const lineHalfWidth = Math.min(740, Math.max(420, studentWidth / 2 + 80));
   const lineY = studentY + 28;
 
-  // Outer navy accent line
-  ctx.strokeStyle = '#0b1f3a';
+  // Outer primary accent line
+  ctx.strokeStyle = design.primaryColor;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.moveTo(width / 2 - lineHalfWidth, lineY);
   ctx.lineTo(width / 2 + lineHalfWidth, lineY);
   ctx.stroke();
 
-  // Inner bold gold accent segment
-  ctx.strokeStyle = '#c5a059';
+  // Inner bold secondary accent segment
+  ctx.strokeStyle = design.secondaryColor;
   ctx.lineWidth = 5;
   ctx.beginPath();
   ctx.moveTo(width / 2 - 160, lineY);
   ctx.lineTo(width / 2 + 160, lineY);
   ctx.stroke();
 
-  // Center decorative gold & navy diamond
-  ctx.fillStyle = '#0b1f3a';
+  // Center decorative diamond
+  ctx.fillStyle = design.primaryColor;
   ctx.beginPath();
   ctx.moveTo(width / 2, lineY - 10);
   ctx.lineTo(width / 2 + 10, lineY);
@@ -457,14 +499,14 @@ export async function renderCertificateToCanvas(
   ctx.closePath();
   ctx.fill();
 
-  ctx.strokeStyle = '#c5a059';
+  ctx.strokeStyle = design.secondaryColor;
   ctx.lineWidth = 2.2;
   ctx.stroke();
 
   // Student Direction, Course, & Group (cohesively placed directly under the line)
   let nextBlockY = lineY + 44;
   if (studentDirectionText) {
-    ctx.fillStyle = '#1e3a8a';
+    ctx.fillStyle = design.accentColor;
     ctx.font = 'italic 600 25px Georgia, "Times New Roman", serif';
     ctx.letterSpacing = '0.5px';
     let dirDisplay = studentDirectionText.trim();
@@ -569,12 +611,13 @@ export async function renderCertificateToCanvas(
 
   // COLUMN 3: Right (Official Academic Seal / Medal of Yangiyer Branch)
   const rightColCenterX = 2360;
-  drawOfficialAcademicMedal(
+  drawAwardMedalForDesign(
     ctx,
     rightColCenterX,
     lowerBaseY + 195,
     150,
-    awardLevel
+    awardLevel,
+    design
   );
 
   // ----------------------------------------------------

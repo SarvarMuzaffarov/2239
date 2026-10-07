@@ -1909,6 +1909,8 @@ export async function createOfficialCertificate(
     signatoryName?: string;
     signatoryRole?: string;
     studentDirection?: string;
+    designId?: string;
+    backgroundPattern?: string;
   },
   actorId: string,
   actorName: string
@@ -1945,6 +1947,8 @@ export async function createOfficialCertificate(
     ...(data.signatoryName ? { signatoryName: data.signatoryName } : {}),
     ...(data.signatoryRole ? { signatoryRole: data.signatoryRole } : {}),
     ...(data.studentDirection ? { studentDirection: data.studentDirection } : {}),
+    ...(data.designId ? { designId: data.designId } : {}),
+    ...(data.backgroundPattern ? { backgroundPattern: data.backgroundPattern } : {}),
   };
 
   await setDoc(ref, cert);
@@ -1989,6 +1993,8 @@ export async function createOfficialCertificatesBatch(
     signatoryName?: string;
     signatoryRole?: string;
     studentDirection?: string;
+    designId?: string;
+    backgroundPattern?: string;
   }>,
   actorId: string,
   actorName: string
@@ -2035,6 +2041,8 @@ export async function createOfficialCertificatesBatch(
         ...(data.signatoryName ? { signatoryName: data.signatoryName } : {}),
         ...(data.signatoryRole ? { signatoryRole: data.signatoryRole } : {}),
         ...(data.studentDirection ? { studentDirection: data.studentDirection } : {}),
+        ...(data.designId ? { designId: data.designId } : {}),
+        ...(data.backgroundPattern ? { backgroundPattern: data.backgroundPattern } : {}),
       };
 
       batch.set(ref, cert);

@@ -220,6 +220,8 @@ export interface CertificateItem {
   awardLevel?: string;
   signatoryDegree?: string;
   verificationUrl?: string;
+  designId?: string;
+  backgroundPattern?: string;
   footerText?: string;
   additionalSignatureText?: string;
 }

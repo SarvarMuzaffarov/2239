@@ -3,6 +3,7 @@ import { X, Award, Download, ShieldCheck } from 'lucide-react';
 import type { CertificateItem } from '../types';
 import { CertificateLivePreview } from './CertificateLivePreview';
 import { downloadCertificatePdf } from '../lib/certificateGenerator';
+import { getCertificateDesign } from '../lib/certificateStyles';
 
 interface CertificatePreviewModalProps {
   isOpen: boolean;
@@ -17,6 +18,8 @@ export const CertificatePreviewModal: React.FC<CertificatePreviewModalProps> = (
 }) => {
   if (!isOpen || !certificate) return null;
 
+  const design = getCertificateDesign(certificate.designId);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-xs overflow-y-auto">
       <div className="bg-slate-900 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-5xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -27,10 +30,13 @@ export const CertificatePreviewModal: React.FC<CertificatePreviewModalProps> = (
               <Award className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-sm sm:text-base font-bold text-white flex flex-wrap items-center gap-2">
                 <span>{certificate.title || 'Diplom'}</span>
                 <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-emerald-400 border border-slate-700">
                   {certificate.certificateNumber}
+                </span>
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  {design.badge} {design.name}
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
