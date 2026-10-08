@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Award, Save, AlertCircle, Check } from 'lucide-react';
 import { updateCertificateDetails } from '../../services/firestoreService';
 import type { CertificateItem, UserAccount } from '../../types';
+import { CertificateDesignSelector } from '../CertificateDesignSelector';
+import type { CertificateDesignId, BackgroundPatternId } from '../../lib/certificateStyles';
 
 interface Props {
   isOpen: boolean;
@@ -22,6 +24,8 @@ export const CertificateEditModal: React.FC<Props> = ({
 
   const [certNumber, setCertNumber] = useState(certificate.certificateNumber || '');
   const [docType, setDocType] = useState<'diplom' | 'sertifikat'>(certificate.documentType || 'sertifikat');
+  const [designId, setDesignId] = useState<CertificateDesignId>((certificate.designId as CertificateDesignId) || 'modern_sidebar');
+  const [backgroundPattern, setBackgroundPattern] = useState<BackgroundPatternId>((certificate.backgroundPattern as BackgroundPatternId) || 'dots_grid');
   const [title, setTitle] = useState(certificate.title || '');
   const [subtitle, setSubtitle] = useState(certificate.subtitle || '');
   const [studentName, setStudentName] = useState(certificate.studentName || '');
@@ -58,6 +62,8 @@ export const CertificateEditModal: React.FC<Props> = ({
         {
           certificateNumber: certNumber.trim().toUpperCase(),
           documentType: docType,
+          designId,
+          backgroundPattern,
           title: title.trim(),
           subtitle: subtitle.trim(),
           studentName: studentName.trim(),
@@ -90,7 +96,7 @@ export const CertificateEditModal: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 my-8">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-4xl w-full p-6 animate-in fade-in zoom-in-95 duration-150 my-8 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-emerald-100 text-emerald-800 rounded-xl">
@@ -125,7 +131,17 @@ export const CertificateEditModal: React.FC<Props> = ({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {/* Design & Background Selector */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+            <CertificateDesignSelector
+              selectedDesignId={designId}
+              selectedPatternId={backgroundPattern}
+              onSelectDesign={setDesignId}
+              onSelectPattern={setBackgroundPattern}
+            />
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">

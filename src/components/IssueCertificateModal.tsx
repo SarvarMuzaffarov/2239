@@ -172,8 +172,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   // Active view tab in modal: 'editor' or 'preview'
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('winner');
-  const [selectedDesignId, setSelectedDesignId] = useState<CertificateDesignId>('royal_gold');
-  const [selectedPatternId, setSelectedPatternId] = useState<BackgroundPatternId>('guilloche');
+  const [selectedDesignId, setSelectedDesignId] = useState<CertificateDesignId>('modern_sidebar');
+  const [selectedPatternId, setSelectedPatternId] = useState<BackgroundPatternId>('dots_grid');
   const [previewIndex, setPreviewIndex] = useState<number>(0);
   const [isBulkDownloading, setIsBulkDownloading] = useState<boolean>(false);
 
@@ -662,6 +662,20 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
               onSelectDesign={setSelectedDesignId}
               onSelectPattern={setSelectedPatternId}
             />
+
+            <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs text-slate-500">
+                A4 Landscape formatida chop etish yoki PDF yuklab olish uchun tayyor.
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveTab('preview')}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-900 hover:bg-blue-950 text-white text-xs font-semibold shadow-xs transition-all cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5 text-blue-300" />
+                <span>Tanlangan shablonda jonli ko‘rish (Preview)</span>
+              </button>
+            </div>
           </div>
 
           {activeTab === 'preview' ? (

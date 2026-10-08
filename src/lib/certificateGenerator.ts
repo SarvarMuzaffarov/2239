@@ -348,6 +348,16 @@ export async function renderCertificateToCanvas(
   const design = getCertificateDesign(data.designId);
   const patternId = (data.backgroundPattern as BackgroundPatternId) || design.defaultPattern;
 
+  const isSidebar = design.layoutType === 'sidebar';
+  const isBands = design.layoutType === 'bands';
+  const isDecree = design.layoutType === 'decree';
+  const isMinimalist = design.layoutType === 'minimalist';
+  const isWaxSeal = design.layoutType === 'wax_seal';
+  const isSmartCard = design.layoutType === 'smart_card';
+
+  // Effective center X for the text and certificates
+  const contentCenterX = isSidebar ? 1800 : width / 2;
+
   // ----------------------------------------------------
   // 1. BASE CANVAS BACKGROUND: With chosen design warmth & palette
   // ----------------------------------------------------
@@ -357,10 +367,10 @@ export async function renderCertificateToCanvas(
   // Soft luxurious radial warmth from center
   ctx.save();
   const bgGrad = ctx.createRadialGradient(
-    width / 2,
+    contentCenterX,
     height * 0.48,
     200,
-    width / 2,
+    contentCenterX,
     height * 0.48,
     1480
   );
@@ -382,7 +392,7 @@ export async function renderCertificateToCanvas(
   );
 
   // ----------------------------------------------------
-  // 2. TWO-LAYER PREMIUM FRAME WITH GEOMETRIC CORNER ELEMENTS
+  // 2. MASTER ARCHITECTURAL FRAME SPECIFIC TO LAYOUT
   // ----------------------------------------------------
   drawCertificateFrame(ctx, width, height, design);
 
@@ -392,28 +402,39 @@ export async function renderCertificateToCanvas(
   ctx.save();
   ctx.textAlign = 'center';
 
+  if (isDecree) {
+    // Bilateral dual emblems for state decree layout
+    drawGovernmentDualEmblems(ctx, 480, 2490, 260, design.secondaryColor, design.primaryColor);
+  }
+
+  // Header Y coordinates
+  const headerY1 = isBands ? 140 : 240;
+  const headerY2 = isBands ? 230 : 305;
+  const dividerY = isBands ? 320 : 350;
+
   // Ministry of Higher Education, Science and Innovations
-  ctx.fillStyle = design.primaryColor;
+  ctx.fillStyle = isBands ? design.secondaryColor : design.primaryColor;
   ctx.font = 'bold 26px "Times New Roman", Georgia, serif';
   ctx.letterSpacing = '3px';
   ctx.fillText(
     'O‘ZBEKISTON RESPUBLIKASI OLIY TA’LIM, FAN VA INNOVATSIYALAR VAZIRLIGI',
-    width / 2,
-    240
+    contentCenterX,
+    headerY1
   );
 
   // Tashkent Chemical-Technological Institute Yangiyer Branch
-  ctx.fillStyle = design.primaryColor;
+  ctx.fillStyle = isBands ? '#ffffff' : design.primaryColor;
   ctx.font = 'bold 42px "Times New Roman", Georgia, serif';
   ctx.letterSpacing = '2px';
   ctx.fillText(
     'TOSHKENT KIMYO-TEXNOLOGIYA INSTITUTI YANGIYER FILIALI',
-    width / 2,
-    305
+    contentCenterX,
+    headerY2
   );
 
   // Style-specific ornamental divider
-  drawCertificateHeaderDivider(ctx, width / 2, 350, 780, design);
+  const dividerWidth = isSidebar ? 680 : 780;
+  drawCertificateHeaderDivider(ctx, contentCenterX, dividerY, dividerWidth, design);
   ctx.restore();
 
   // ----------------------------------------------------
@@ -429,24 +450,25 @@ export async function renderCertificateToCanvas(
   ctx.shadowOffsetY = 3;
 
   ctx.fillStyle = design.primaryColor;
-  // Adapt font size dynamically if title is extraordinarily long
+  const titleY = isBands ? 520 : 480;
   let mainTitleFontSize = 96;
   ctx.font = `900 ${mainTitleFontSize}px "Times New Roman", Georgia, serif`;
   ctx.letterSpacing = '4px';
+  const titleMaxLimit = isSidebar ? 2000 : 2350;
   let titleMeasureWidth = ctx.measureText(docTitle.toUpperCase()).width;
-  if (titleMeasureWidth > 2350) {
-    mainTitleFontSize = Math.max(72, Math.floor(mainTitleFontSize * (2350 / titleMeasureWidth)));
+  if (titleMeasureWidth > titleMaxLimit) {
+    mainTitleFontSize = Math.max(72, Math.floor(mainTitleFontSize * (titleMaxLimit / titleMeasureWidth)));
     ctx.font = `900 ${mainTitleFontSize}px "Times New Roman", Georgia, serif`;
   }
-  ctx.fillText(docTitle.toUpperCase(), width / 2, 480);
+  ctx.fillText(docTitle.toUpperCase(), contentCenterX, titleY);
   ctx.shadowColor = 'transparent';
 
-  // Subtitle / Preamble (paired closely with the title)
-  // “Ushbu sertifikat iqtidorli talaba sifatida erishgan yuksak natijalari hamda faoliyati uchun taqdim etiladi.”
+  // Subtitle / Preamble
   ctx.fillStyle = design.subtextColor;
   ctx.font = 'italic 600 30px Georgia, "Times New Roman", serif';
   ctx.letterSpacing = '0.5px';
-  ctx.fillText(presentedTo, width / 2, 550);
+  const subtitleY = titleY + 70;
+  ctx.fillText(presentedTo, contentCenterX, subtitleY);
   ctx.restore();
 
   // ----------------------------------------------------
@@ -458,7 +480,7 @@ export async function renderCertificateToCanvas(
   let studentFontSize = 96;
   ctx.font = `bold ${studentFontSize}px "Times New Roman", Georgia, serif`;
   let studentWidth = ctx.measureText(studentName).width;
-  const maxStudentWidth = 1950;
+  const maxStudentWidth = isSidebar ? 1700 : 1950;
   if (studentWidth > maxStudentWidth) {
     studentFontSize = Math.max(54, Math.floor(studentFontSize * (maxStudentWidth / studentWidth)));
     ctx.font = `bold ${studentFontSize}px "Times New Roman", Georgia, serif`;
@@ -466,36 +488,36 @@ export async function renderCertificateToCanvas(
   }
 
   ctx.fillStyle = design.primaryColor;
-  const studentY = 680;
-  ctx.fillText(studentName, width / 2, studentY);
+  const studentY = subtitleY + 130;
+  ctx.fillText(studentName, contentCenterX, studentY);
 
   // Decorative dual-tone underline bar with centerpiece diamond & wings
-  const lineHalfWidth = Math.min(740, Math.max(420, studentWidth / 2 + 80));
+  const lineHalfWidth = Math.min(isSidebar ? 620 : 740, Math.max(380, studentWidth / 2 + 80));
   const lineY = studentY + 28;
 
   // Outer primary accent line
   ctx.strokeStyle = design.primaryColor;
   ctx.lineWidth = 2.5;
   ctx.beginPath();
-  ctx.moveTo(width / 2 - lineHalfWidth, lineY);
-  ctx.lineTo(width / 2 + lineHalfWidth, lineY);
+  ctx.moveTo(contentCenterX - lineHalfWidth, lineY);
+  ctx.lineTo(contentCenterX + lineHalfWidth, lineY);
   ctx.stroke();
 
   // Inner bold secondary accent segment
   ctx.strokeStyle = design.secondaryColor;
   ctx.lineWidth = 5;
   ctx.beginPath();
-  ctx.moveTo(width / 2 - 160, lineY);
-  ctx.lineTo(width / 2 + 160, lineY);
+  ctx.moveTo(contentCenterX - 160, lineY);
+  ctx.lineTo(contentCenterX + 160, lineY);
   ctx.stroke();
 
   // Center decorative diamond
   ctx.fillStyle = design.primaryColor;
   ctx.beginPath();
-  ctx.moveTo(width / 2, lineY - 10);
-  ctx.lineTo(width / 2 + 10, lineY);
-  ctx.lineTo(width / 2, lineY + 10);
-  ctx.lineTo(width / 2 - 10, lineY);
+  ctx.moveTo(contentCenterX, lineY - 10);
+  ctx.lineTo(contentCenterX + 10, lineY);
+  ctx.lineTo(contentCenterX, lineY + 10);
+  ctx.lineTo(contentCenterX - 10, lineY);
   ctx.closePath();
   ctx.fill();
 
@@ -503,7 +525,7 @@ export async function renderCertificateToCanvas(
   ctx.lineWidth = 2.2;
   ctx.stroke();
 
-  // Student Direction, Course, & Group (cohesively placed directly under the line)
+  // Student Direction, Course, & Group
   let nextBlockY = lineY + 44;
   if (studentDirectionText) {
     ctx.fillStyle = design.accentColor;
@@ -513,9 +535,9 @@ export async function renderCertificateToCanvas(
     if (!dirDisplay.startsWith('«') && !dirDisplay.endsWith('»')) {
       dirDisplay = `«${dirDisplay}»`;
     }
-    const dirLines = wrapText(ctx, dirDisplay, 1900);
+    const dirLines = wrapText(ctx, dirDisplay, isSidebar ? 1700 : 1900);
     for (const dLine of dirLines) {
-      ctx.fillText(dLine, width / 2, nextBlockY);
+      ctx.fillText(dLine, contentCenterX, nextBlockY);
       nextBlockY += 34;
     }
     nextBlockY += 10;
@@ -525,11 +547,11 @@ export async function renderCertificateToCanvas(
   ctx.restore();
 
   // ----------------------------------------------------
-  // 6. CITATION & EVENT GROUP: Activity Name + Reason + Confirmation
+  // 6. CITATION & EVENT GROUP
   // ----------------------------------------------------
   ctx.save();
   ctx.textAlign = 'center';
-  ctx.fillStyle = '#0b1f3a';
+  ctx.fillStyle = design.primaryColor;
   ctx.font = 'bold 42px Georgia, "Times New Roman", serif';
   ctx.letterSpacing = '0.8px';
 
@@ -538,11 +560,10 @@ export async function renderCertificateToCanvas(
     displayEvent = `«${displayEvent}»`;
   }
 
-  // Wrap competition name if it exceeds 2000px
-  const compLines = wrapText(ctx, displayEvent, 2000);
+  const compLines = wrapText(ctx, displayEvent, isSidebar ? 1750 : 2000);
   let compCurrentY = nextBlockY + 26;
   for (const line of compLines) {
-    ctx.fillText(line, width / 2, compCurrentY);
+    ctx.fillText(line, contentCenterX, compCurrentY);
     compCurrentY += 50;
   }
   ctx.restore();
@@ -552,7 +573,7 @@ export async function renderCertificateToCanvas(
   ctx.textAlign = 'center';
 
   let descFontSize = 29;
-  const maxDescWidth = 2050;
+  const maxDescWidth = isSidebar ? 1800 : 2050;
   ctx.font = `500 ${descFontSize}px system-ui, -apple-system, sans-serif`;
   let lines = wrapText(ctx, mainText, maxDescWidth);
 
@@ -562,11 +583,11 @@ export async function renderCertificateToCanvas(
     lines = wrapText(ctx, mainText, maxDescWidth);
   }
 
-  ctx.fillStyle = '#1e293b'; // high-contrast readable dark slate
+  ctx.fillStyle = '#1e293b';
   const lineHeight = descFontSize * 1.5;
   let currentY = compCurrentY + 24;
   for (const line of lines) {
-    ctx.fillText(line, width / 2, currentY);
+    ctx.fillText(line, contentCenterX, currentY);
     currentY += lineHeight;
   }
 
@@ -574,54 +595,204 @@ export async function renderCertificateToCanvas(
   if (confirmationText) {
     ctx.fillStyle = '#475569';
     ctx.font = 'italic 600 24px "Times New Roman", Georgia, serif';
-    ctx.fillText(confirmationText, width / 2, currentY + 24);
+    ctx.fillText(confirmationText, contentCenterX, currentY + 24);
   }
   ctx.restore();
 
   // ----------------------------------------------------
-  // 7. PRESTIGIOUS LOWER THIRD: Balanced 3-Column Symmetrical Layout
-  // Chapda: Katta va aniq QR-kod + “HAQIQIYLIKNI TEKSHIRISH” + ID + Sana
-  // Markazda: Mas’ul shaxs imzosi (Xakimov Zafar Tulyaganovich)
-  // O‘ngda: Rasmiy muhr (TKTI Yangiyer filiali rasmiy muhri)
+  // 7. PRESTIGIOUS LOWER THIRD: Layout-Adaptive Architecture
   // ----------------------------------------------------
   const lowerBaseY = 1370;
-
-  // COLUMN 1: Left (Cryptographic QR Verification Block with ID & Date)
-  const leftColCenterX = 610;
   const baseUrl = typeof window !== 'undefined' && window.location?.origin ? window.location.origin.replace(/\/+$/, '') : '';
   const verifyUrl = data.verificationUrl || `${baseUrl}/?verify=${encodeURIComponent(certNumber)}`;
-  await drawVerificationBlock(
-    ctx,
-    leftColCenterX,
-    lowerBaseY,
-    certNumber,
-    issueDateFormatted,
-    verifyUrl
-  );
 
-  // COLUMN 2: Center (Director Signature Block)
-  const centerColCenterX = width / 2;
-  drawSignatoryBlock(
-    ctx,
-    centerColCenterX,
-    lowerBaseY,
-    signatoryName,
-    signatoryRole
-  );
+  if (isSidebar) {
+    // LAYOUT 1: SIDEBAR
+    // QR Code inside the dedicated white card in the left dark sidebar
+    await drawVerificationBlock(
+      ctx,
+      310,
+      1380,
+      certNumber,
+      issueDateFormatted,
+      verifyUrl
+    );
 
-  // COLUMN 3: Right (Official Academic Seal / Medal of Yangiyer Branch)
-  const rightColCenterX = 2360;
-  drawAwardMedalForDesign(
-    ctx,
-    rightColCenterX,
-    lowerBaseY + 195,
-    150,
-    awardLevel,
-    design
-  );
+    // Director signature block in center-right
+    drawSignatoryBlock(
+      ctx,
+      1380,
+      lowerBaseY,
+      signatoryName,
+      signatoryRole
+    );
+
+    // Official seal in right
+    drawAwardMedalForDesign(
+      ctx,
+      2380,
+      lowerBaseY + 195,
+      150,
+      awardLevel,
+      design
+    );
+  } else if (isBands) {
+    // LAYOUT 3: SOLID BANDS
+    // Left: QR card inside footer
+    await drawVerificationBlock(
+      ctx,
+      500,
+      1740,
+      certNumber,
+      issueDateFormatted,
+      verifyUrl
+    );
+
+    // Center: Director signature in white/gold
+    drawSignatoryBlock(
+      ctx,
+      width / 2,
+      1740,
+      signatoryName,
+      signatoryRole
+    );
+
+    // Right: Medal in footer
+    drawAwardMedalForDesign(
+      ctx,
+      2450,
+      1910,
+      140,
+      awardLevel,
+      design
+    );
+  } else if (isDecree) {
+    // LAYOUT 5: GOVERNMENT DECREE (Bilateral signatories + Grand central state seal)
+    // Left signatory (Director)
+    drawSignatoryBlock(
+      ctx,
+      720,
+      lowerBaseY,
+      signatoryName,
+      signatoryRole
+    );
+
+    // Grand Central Seal
+    drawAwardMedalForDesign(
+      ctx,
+      width / 2,
+      lowerBaseY + 195,
+      155,
+      awardLevel,
+      design
+    );
+
+    // Right signatory (Ilmiy kotib)
+    drawSignatoryBlock(
+      ctx,
+      2250,
+      lowerBaseY,
+      'Maxmudov O. Q.',
+      'ILMIY KENGASH KOTIBI, DOTSENT'
+    );
+
+    // Small QR badge in bottom left
+    await drawSmallVerificationBadge(ctx, 230, height - 230, certNumber, verifyUrl);
+  } else if (isWaxSeal) {
+    // LAYOUT 9: DIPLOMATIC RED WAX SEAL
+    await drawVerificationBlock(
+      ctx,
+      610,
+      lowerBaseY,
+      certNumber,
+      issueDateFormatted,
+      verifyUrl
+    );
+
+    // Center: 3D Red Wax Seal with hanging ribbons
+    drawAwardMedalForDesign(
+      ctx,
+      width / 2,
+      lowerBaseY + 195,
+      135,
+      awardLevel,
+      design
+    );
+
+    // Right: Director signature
+    drawSignatoryBlock(
+      ctx,
+      2360,
+      lowerBaseY,
+      signatoryName,
+      signatoryRole
+    );
+  } else if (isSmartCard) {
+    // LAYOUT 10: SMART VERIFICATION CARD
+    drawSignatoryBlock(
+      ctx,
+      820,
+      lowerBaseY,
+      signatoryName,
+      signatoryRole
+    );
+
+    drawAwardMedalForDesign(
+      ctx,
+      1485,
+      lowerBaseY + 195,
+      140,
+      awardLevel,
+      design
+    );
+
+    // Smart Card in bottom right
+    await drawSmartVerificationCard(
+      ctx,
+      2050,
+      lowerBaseY - 20,
+      560,
+      350,
+      certNumber,
+      issueDateFormatted,
+      verifyUrl,
+      design
+    );
+  } else {
+    // STANDARD / BAROQUE / RIBBON / CYBER / MINIMALIST
+    const leftColCenterX = 610;
+    const centerColCenterX = width / 2;
+    const rightColCenterX = 2360;
+
+    await drawVerificationBlock(
+      ctx,
+      leftColCenterX,
+      lowerBaseY,
+      certNumber,
+      issueDateFormatted,
+      verifyUrl
+    );
+
+    drawSignatoryBlock(
+      ctx,
+      centerColCenterX,
+      lowerBaseY,
+      signatoryName,
+      signatoryRole
+    );
+
+    drawAwardMedalForDesign(
+      ctx,
+      rightColCenterX,
+      lowerBaseY + 195,
+      150,
+      awardLevel,
+      design
+    );
+  }
 
   // ----------------------------------------------------
-  // 11. BOTTOM MICRO-CREDIT BAR (Clean, subtle, institutional)
+  // 11. BOTTOM MICRO-CREDIT BAR
   // ----------------------------------------------------
   ctx.save();
   ctx.textAlign = 'center';
@@ -630,7 +801,7 @@ export async function renderCertificateToCanvas(
   ctx.letterSpacing = '1px';
   ctx.fillText(
     'Toshkent kimyo-texnologiya instituti Yangiyer filiali • Oliy ta’lim muassasasining rasmiy elektron reestri hujjati',
-    width / 2,
+    contentCenterX,
     1965
   );
   ctx.restore();
@@ -1383,6 +1554,227 @@ function drawCurvedText(
     ctx.fillText(char, 0, 0);
     ctx.restore();
   }
+  ctx.restore();
+}
+
+/**
+ * Draws dual bilateral state emblems for government decree layout
+ */
+function drawGovernmentDualEmblems(
+  ctx: CanvasRenderingContext2D,
+  leftX: number,
+  rightX: number,
+  y: number,
+  goldColor: string,
+  primaryColor: string
+) {
+  ctx.save();
+  const radius = 64;
+
+  // Left Emblem (Ministry of Higher Education & Innovation)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(leftX, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = goldColor;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(leftX, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(leftX, y, radius - 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  drawCenter8PointStar(ctx, leftX, y, 28, goldColor);
+
+  // Right Emblem (TKT Yangiyer Branch)
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(rightX, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = goldColor;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(rightX, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = primaryColor;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(rightX, y, radius - 8, 0, Math.PI * 2);
+  ctx.stroke();
+
+  drawCenter8PointStar(ctx, rightX, y, 28, primaryColor);
+
+  ctx.restore();
+}
+
+/**
+ * Draws small verification badge in corner for decree layout
+ */
+async function drawSmallVerificationBadge(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  certNumber: string,
+  verifyUrl: string
+) {
+  ctx.save();
+  const size = 170;
+  const x = cx - size / 2;
+  const y = cy - size / 2;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.12)';
+  ctx.shadowBlur = 12;
+  roundRect(ctx, x, y, size, size + 40, 10);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+
+  ctx.strokeStyle = '#064e3b';
+  ctx.lineWidth = 2;
+  roundRect(ctx, x, y, size, size + 40, 10);
+  ctx.stroke();
+
+  const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+    errorCorrectionLevel: 'M',
+    width: 200,
+    margin: 1,
+    color: { dark: '#064e3b', light: '#ffffff' },
+  });
+  const qrImg = await loadImage(qrDataUrl);
+  ctx.drawImage(qrImg, x + 10, y + 10, size - 20, size - 20);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#064e3b';
+  ctx.font = 'bold 13px monospace';
+  ctx.fillText(`№ ${certNumber}`, cx, y + size + 24);
+  ctx.restore();
+}
+
+/**
+ * Draws digital smart verification credential card
+ */
+async function drawSmartVerificationCard(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  certNumber: string,
+  issueDateFormatted: string,
+  verifyUrl: string,
+  design: CertificateDesign
+) {
+  ctx.save();
+
+  // Dark metallic card body with soft shadow
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.25)';
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 8;
+  const cardGrad = ctx.createLinearGradient(x, y, x + width, y + height);
+  cardGrad.addColorStop(0, '#0f172a');
+  cardGrad.addColorStop(0.5, '#1e293b');
+  cardGrad.addColorStop(1, '#082f49');
+  ctx.fillStyle = cardGrad;
+  roundRect(ctx, x, y, width, height, 18);
+  ctx.fill();
+  ctx.shadowColor = 'transparent';
+
+  // Metallic cyan/gold edge
+  ctx.strokeStyle = design.accentColor || '#38bdf8';
+  ctx.lineWidth = 2.5;
+  roundRect(ctx, x, y, width, height, 18);
+  ctx.stroke();
+
+  // Gold Microchip simulation
+  const chipX = x + 35;
+  const chipY = y + 35;
+  const chipW = 75;
+  const chipH = 55;
+  ctx.fillStyle = '#eab308';
+  roundRect(ctx, chipX, chipY, chipW, chipH, 6);
+  ctx.fill();
+
+  ctx.strokeStyle = '#854d0e';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(chipX, chipY + chipH / 2);
+  ctx.lineTo(chipX + chipW, chipY + chipH / 2);
+  ctx.moveTo(chipX + chipW / 2, chipY);
+  ctx.lineTo(chipX + chipW / 2, chipY + chipH);
+  ctx.stroke();
+
+  // Smart Registry Header
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 15px monospace';
+  ctx.letterSpacing = '1px';
+  ctx.fillText('ELECTRONIC REGISTRY ID', chipX + chipW + 24, y + 48);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px monospace';
+  ctx.fillText(certNumber, chipX + chipW + 24, y + 78);
+
+  // High-res QR code
+  const qrDataUrl = await QRCode.toDataURL(verifyUrl, {
+    errorCorrectionLevel: 'H',
+    width: 220,
+    margin: 1,
+    color: { dark: '#082f49', light: '#ffffff' },
+  });
+  const qrImg = await loadImage(qrDataUrl);
+  const qrSize = 150;
+  const qrX = x + width - qrSize - 35;
+  const qrY = y + height - qrSize - 30;
+
+  ctx.fillStyle = '#ffffff';
+  roundRect(ctx, qrX - 6, qrY - 6, qrSize + 12, qrSize + 12, 8);
+  ctx.fill();
+  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+
+  // Security credentials text
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '13px monospace';
+  ctx.fillText(`STATUS: VERIFIED // ACTIVE`, x + 35, y + 160);
+  ctx.fillText(`ISSUED: ${issueDateFormatted}`, x + 35, y + 190);
+  ctx.fillText(`KEY: TKTI-SEC-2026-NFC`, x + 35, y + 220);
+
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = 'bold 13px system-ui, sans-serif';
+  ctx.fillText('XALQARO ELEKTRON REESTR HUJJATI', x + 35, y + height - 35);
+
+  ctx.restore();
+}
+
+/**
+ * Helper to draw 8-pointed star on canvas
+ */
+function drawCenter8PointStar(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  radius: number,
+  color: string
+) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  for (let i = 0; i < 16; i++) {
+    const angle = (i * Math.PI) / 8;
+    const r = i % 2 === 0 ? radius : radius * 0.55;
+    const px = cx + r * Math.cos(angle);
+    const py = cy + r * Math.sin(angle);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
   ctx.restore();
 }
 
