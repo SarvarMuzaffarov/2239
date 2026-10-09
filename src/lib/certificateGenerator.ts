@@ -220,24 +220,28 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
  */
 export function generateNextCertificateNumber(
   docType: 'diplom' | 'sertifikat' = 'diplom',
-  existingCertificates: Array<{ certificateNumber?: string }> = [],
+  existingCertificates: Array<{ certificateNumber?: string; documentType?: string }> = [],
   offset: number = 0
 ): string {
-  const prefix = docType === 'diplom' ? 'DIP-2026-' : 'CERT-2026-';
+  const isDiplom = docType === 'diplom';
+  const prefix = isDiplom ? 'DIP-2026-' : 'CERT-2026-';
   const usedNumbers = new Set<string>();
 
+  // Maintain separate sequence counters for DIP and CERT
   let maxNumeric = 1000;
+  const prefixRegex = isDiplom ? /^DIP-2026-(\d+)$/i : /^CERT-2026-(\d+)$/i;
+
   if (Array.isArray(existingCertificates)) {
     for (const c of existingCertificates) {
       if (!c || !c.certificateNumber) continue;
-      const clean = c.certificateNumber.trim();
-      usedNumbers.add(clean.toUpperCase());
+      const clean = c.certificateNumber.trim().toUpperCase();
+      usedNumbers.add(clean);
 
-      // Match standard pattern: CERT-2026-XXXX or DIP-2026-XXXX
-      const match = clean.match(/(?:CERT|DIP)-2026-(\d+)/i);
+      // Scan ONLY numbers matching the current document type prefix
+      const match = clean.match(prefixRegex);
       if (match) {
         const val = parseInt(match[1], 10);
-        // Exclude huge epoch millisecond numbers like 822661 or 1729482
+        // Exclude huge out-of-range epoch millisecond numbers like 822661
         if (!isNaN(val) && val > maxNumeric && val < 90000) {
           maxNumeric = val;
         }

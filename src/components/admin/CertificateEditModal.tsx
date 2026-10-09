@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
-import { X, Award, Save, AlertCircle, Check } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Award, Save, AlertCircle, Check, RefreshCw } from 'lucide-react';
 import { updateCertificateDetails } from '../../services/firestoreService';
 import type { CertificateItem, UserAccount } from '../../types';
 import { CertificateDesignSelector } from '../CertificateDesignSelector';
 import type { CertificateDesignId, BackgroundPatternId } from '../../lib/certificateStyles';
+import { generateNextCertificateNumber } from '../../lib/certificateGenerator';
+import { offlineStore } from '../../lib/offlineStore';
 
 interface Props {
   isOpen: boolean;
@@ -44,6 +46,21 @@ export const CertificateEditModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const allCerts = useMemo(() => {
+    return (offlineStore.get('certificates') as CertificateItem[]).filter(c => c.id !== certificate.id);
+  }, [certificate.id]);
+
+  const isDuplicateNumber = useMemo(() => {
+    if (!certNumber.trim()) return false;
+    const clean = certNumber.trim().toUpperCase();
+    return allCerts.some(c => c.certificateNumber?.trim().toUpperCase() === clean);
+  }, [certNumber, allCerts]);
+
+  const handleGenerateFreshNumber = () => {
+    const fresh = generateNextCertificateNumber(docType, allCerts);
+    setCertNumber(fresh);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,16 +161,35 @@ export const CertificateEditModal: React.FC<Props> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Hujjat Raqami (ID) *
-              </label>
-              <input
-                type="text"
-                required
-                value={certNumber}
-                onChange={e => setCertNumber(e.target.value.toUpperCase())}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-mono uppercase focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white font-bold"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Hujjat Raqami (ID) *
+                </label>
+                {isDuplicateNumber && (
+                  <span className="text-[10px] text-rose-600 font-bold">Takrorlangan raqam!</span>
+                )}
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  required
+                  value={certNumber}
+                  onChange={e => setCertNumber(e.target.value.toUpperCase())}
+                  className={`w-full pl-3 pr-9 py-2 text-xs rounded-xl font-mono uppercase focus:outline-none focus:ring-2 font-bold ${
+                    isDuplicateNumber
+                      ? 'bg-rose-50 border border-rose-300 focus:ring-rose-500 text-rose-900'
+                      : 'bg-slate-50 border border-slate-200 focus:ring-emerald-600 focus:bg-white text-emerald-950'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={handleGenerateFreshNumber}
+                  title="Yangi unikal raqam generatsiya qilish"
+                  className="absolute right-2 top-2 text-slate-400 hover:text-emerald-700 p-0.5 rounded cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
             <div>

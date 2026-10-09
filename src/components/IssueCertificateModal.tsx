@@ -559,8 +559,8 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
       // Immediately advance to next unique number so subsequent certificates NEVER share this number!
       const nextFresh = generateNextCertificateNumber(
         docType,
-        [...(certificates || []), { certificateNumber: finalCertNumber }],
-        1
+        [...(certificates || []), { certificateNumber: finalCertNumber, documentType: docType }],
+        0
       );
       setCertNumber(nextFresh);
       const match = nextFresh.match(/(\d+)$/);

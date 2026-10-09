@@ -47,7 +47,9 @@ import {
   Languages,
   Loader2,
   Upload,
+  Sparkles,
 } from 'lucide-react';
+import { offlineStore } from '../lib/offlineStore';
 import { uploadPdfDocument } from '../lib/storage';
 import { EmptyState } from './EmptyState';
 import { EditStudentModal } from './EditStudentModal';
@@ -1259,6 +1261,16 @@ export const AdminDashboard: React.FC<Props> = ({
       onNotify('error', err.message || "Ommaviy sertifikat/diplom berishda xatolik.");
     } finally {
       setIsCertIssuing(false);
+    }
+  };
+
+  // Action: Repair & deduplicate all previously issued certificates in the database
+  const handleRepairCertificateNumbers = () => {
+    const res = offlineStore.repairAndDeduplicateCertificates();
+    if (res.fixed > 0) {
+      onNotify('success', `Jami ${res.fixed} ta eski sertifikat raqamlari tartibga solindi va har biriga unikal seriya raqami biriktirildi!`);
+    } else {
+      onNotify('info', `Barcha (${res.total} ta) sertifikatlar to‘liq unikal raqamlarga ega, takrorlanish yo‘q.`);
     }
   };
 
@@ -3585,6 +3597,17 @@ export const AdminDashboard: React.FC<Props> = ({
                 >
                   <FileSpreadsheet className="w-4 h-4" />
                   <span>Excelga yuklash</span>
+                </button>
+              )}
+              {(hasPermission(currentUser, 'certificates', 'edit') || currentUser.role === 'admin' || currentUser.role === 'superAdmin') && (
+                <button
+                  type="button"
+                  onClick={handleRepairCertificateNumbers}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer border border-slate-200"
+                  title="Eski va yangi barcha sertifikatlar raqamlarini tekshirish hamda har biriga alohida unikal raqam biriktirish"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-600" />
+                  <span>Raqamlarni tekshirish va unikallashtirish</span>
                 </button>
               )}
               {hasPermission(currentUser, 'certificates', 'create') && (

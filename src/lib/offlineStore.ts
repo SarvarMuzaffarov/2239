@@ -30,12 +30,83 @@ interface StoreData {
 type CollectionKey = keyof StoreData;
 type Listener<T = any> = (items: T[]) => void;
 
+/**
+ * Ensures all certificates in the registry have 100% unique sequential serial numbers.
+ * Resolves any duplicates, missing numbers, or legacy mismatches between DIP and CERT.
+ */
+export function sanitizeCertificates(certs: CertificateItem[]): { items: CertificateItem[]; hasChanges: boolean } {
+  if (!Array.isArray(certs) || certs.length === 0) return { items: certs, hasChanges: false };
+
+  const used = new Set<string>();
+  let diplomMax = 1000;
+  let certMax = 1000;
+
+  // First pass: detect maximum numbers in active usage
+  for (const c of certs) {
+    if (!c || !c.certificateNumber) continue;
+    const num = c.certificateNumber.trim().toUpperCase();
+    const dipMatch = num.match(/^DIP-2026-(\d+)$/);
+    if (dipMatch) {
+      const v = parseInt(dipMatch[1], 10);
+      if (v > diplomMax && v < 90000) diplomMax = v;
+    }
+    const certMatch = num.match(/^CERT-2026-(\d+)$/);
+    if (certMatch) {
+      const v = parseInt(certMatch[1], 10);
+      if (v > certMax && v < 5000) certMax = v;
+    }
+  }
+
+  let hasChanges = false;
+  const result: CertificateItem[] = [];
+
+  for (const c of certs) {
+    if (!c) continue;
+    const rawNum = (c.certificateNumber || '').trim().toUpperCase();
+    const isDip = c.documentType === 'diplom' || (c.title || '').toLowerCase().includes('diplom');
+
+    let needsRepair = false;
+    if (!rawNum) needsRepair = true;
+    else if (used.has(rawNum)) needsRepair = true;
+    else if (isDip && rawNum.startsWith('CERT-2026-')) needsRepair = true;
+    else if (rawNum === 'CERT-2026-5127') needsRepair = true;
+
+    if (needsRepair) {
+      hasChanges = true;
+      let newNum = '';
+      if (isDip) {
+        diplomMax++;
+        while (used.has(`DIP-2026-${diplomMax}`)) diplomMax++;
+        newNum = `DIP-2026-${diplomMax}`;
+      } else {
+        certMax++;
+        while (used.has(`CERT-2026-${certMax}`)) certMax++;
+        newNum = `CERT-2026-${certMax}`;
+      }
+      used.add(newNum);
+      result.push({
+        ...c,
+        certificateNumber: newNum,
+        documentType: isDip ? 'diplom' : (c.documentType || 'sertifikat'),
+      });
+    } else {
+      used.add(rawNum);
+      result.push(c);
+    }
+  }
+
+  return { items: result, hasChanges };
+}
+
 class OfflineStore {
   private data: StoreData;
   private listeners: Map<CollectionKey, Set<Listener>> = new Map();
   private isHydratedFromIdb = false;
 
   constructor() {
+    const rawCerts = (realSnapshot.certificates as any[]) || [];
+    const sanitizedCerts = sanitizeCertificates(rawCerts);
+
     // 1. Immediately initialize with complete real snapshot so UI is populated on frame 0
     this.data = {
       users: (realSnapshot.users as any[]) || [],
@@ -44,7 +115,7 @@ class OfflineStore {
       languageCertificates: (realSnapshot.languageCertificates as any[]) || [],
       projects: (realSnapshot.projects as any[]) || [],
       achievements: (realSnapshot.achievements as any[]) || [],
-      certificates: (realSnapshot.certificates as any[]) || [],
+      certificates: sanitizedCerts.items,
       events: (realSnapshot.events as any[]) || [],
       announcements: (realSnapshot.announcements as any[]) || [],
       auditLogs: (realSnapshot.auditLogs as any[]) || [],
@@ -89,7 +160,19 @@ class OfflineStore {
               map.set(item.id, { ...(map.get(item.id) || {}), ...item });
             }
           }
-          this.data[col] = Array.from(map.values()) as any;
+
+          let finalColItems = Array.from(map.values()) as any[];
+
+          // Guarantee zero duplicate certificate numbers even when restoring older IDB caches
+          if (col === 'certificates') {
+            const cleanRes = sanitizeCertificates(finalColItems);
+            if (cleanRes.hasChanges) {
+              finalColItems = cleanRes.items;
+              idbSaveCollection('certificates', finalColItems).catch(() => {});
+            }
+          }
+
+          this.data[col] = finalColItems as any;
           hasUpdates = true;
           this.notify(col);
         } else {
@@ -219,6 +302,23 @@ class OfflineStore {
     return this.data.users.some(
       u => u && (u.role === 'superAdmin' || u.role === 'admin') && u.isActive !== false && !u.isDeleted
     );
+  }
+
+  public repairAndDeduplicateCertificates(): { total: number; fixed: number } {
+    const current = this.data.certificates;
+    const { items, hasChanges } = sanitizeCertificates(current);
+    let fixed = 0;
+    for (let i = 0; i < current.length; i++) {
+      if (current[i].certificateNumber !== items[i]?.certificateNumber) {
+        fixed++;
+      }
+    }
+    if (hasChanges || fixed > 0) {
+      this.data.certificates = items;
+      this.persistCollection('certificates');
+      this.notify('certificates');
+    }
+    return { total: items.length, fixed };
   }
 
   public resetToSeed(): void {
