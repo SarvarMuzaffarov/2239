@@ -45,6 +45,7 @@ import {
 import { isValidDirection, canonicalizeDirection, getDirectionFilterVariants } from '../constants/directions';
 import { matchesStudentSearch } from '../lib/searchUtils';
 import { offlineStore } from '../lib/offlineStore';
+import { generateNextCertificateNumber } from '../lib/certificateGenerator';
 
 // Helper for timeout protection on async calls
 async function withFirestoreTimeout<T>(
@@ -1915,7 +1916,14 @@ export async function createOfficialCertificate(
   actorId: string,
   actorName: string
 ): Promise<CertificateItem> {
-  const certNumber = data.certificateNumber?.trim() || `CERT-2026-${Date.now().toString().slice(-4)}`;
+  const existingCerts = (offlineStore.get('certificates') as CertificateItem[]) || [];
+  const takenSet = new Set(existingCerts.map(c => c.certificateNumber?.trim().toUpperCase()));
+
+  let certNumber = data.certificateNumber?.trim();
+  if (!certNumber || takenSet.has(certNumber.toUpperCase())) {
+    certNumber = generateNextCertificateNumber(data.documentType || 'diplom', existingCerts);
+  }
+
   const ref = doc(collection(db, 'certificates'));
 
   const cert: CertificateItem = {
@@ -1952,6 +1960,13 @@ export async function createOfficialCertificate(
   };
 
   await setDoc(ref, cert);
+
+  // Sync to offline store immediately
+  try {
+    offlineStore.saveItem('certificates', cert);
+  } catch (err) {
+    console.warn('Error saving to offlineStore:', err);
+  }
 
   await logAuditAction(
     { id: actorId, fullName: actorName, role: 'admin' },
@@ -2007,9 +2022,17 @@ export async function createOfficialCertificatesBatch(
   for (let i = 0; i < items.length; i += CHUNK_SIZE) {
     const chunk = items.slice(i, i + CHUNK_SIZE);
     const batch = writeBatch(db);
+    const existingCerts = (offlineStore.get('certificates') as CertificateItem[]) || [];
+    const takenSet = new Set(existingCerts.map(c => c.certificateNumber?.trim().toUpperCase()));
+    result.forEach(r => takenSet.add(r.certificateNumber.trim().toUpperCase()));
 
     for (const data of chunk) {
-      const certNumber = data.certificateNumber?.trim() || `CERT-2026-${Date.now().toString().slice(-4)}${Math.floor(10 + Math.random() * 90)}`;
+      let certNumber = data.certificateNumber?.trim();
+      if (!certNumber || takenSet.has(certNumber.toUpperCase())) {
+        certNumber = generateNextCertificateNumber(data.documentType || 'diplom', [...existingCerts, ...result]);
+      }
+      takenSet.add(certNumber.toUpperCase());
+
       const ref = doc(collection(db, 'certificates'));
 
       const cert: CertificateItem = {
@@ -2047,6 +2070,12 @@ export async function createOfficialCertificatesBatch(
 
       batch.set(ref, cert);
       result.push(cert);
+
+      try {
+        offlineStore.saveItem('certificates', cert);
+      } catch (err) {
+        console.warn('Error saving to offlineStore:', err);
+      }
     }
 
     await withFirestoreTimeout(

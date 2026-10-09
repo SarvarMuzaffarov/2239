@@ -214,6 +214,46 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
 ];
 
 /**
+ * Generates the next guaranteed unique certificate or diploma number.
+ * Automatically scans all existing certificates in the registry to avoid duplicates.
+ * Example outputs: 'CERT-2026-1152', 'DIP-2026-1152'
+ */
+export function generateNextCertificateNumber(
+  docType: 'diplom' | 'sertifikat' = 'diplom',
+  existingCertificates: Array<{ certificateNumber?: string }> = [],
+  offset: number = 0
+): string {
+  const prefix = docType === 'diplom' ? 'DIP-2026-' : 'CERT-2026-';
+  const usedNumbers = new Set<string>();
+
+  let maxNumeric = 1000;
+  if (Array.isArray(existingCertificates)) {
+    for (const c of existingCertificates) {
+      if (!c || !c.certificateNumber) continue;
+      const clean = c.certificateNumber.trim();
+      usedNumbers.add(clean.toUpperCase());
+
+      // Match standard pattern: CERT-2026-XXXX or DIP-2026-XXXX
+      const match = clean.match(/(?:CERT|DIP)-2026-(\d+)/i);
+      if (match) {
+        const val = parseInt(match[1], 10);
+        // Exclude huge epoch millisecond numbers like 822661 or 1729482
+        if (!isNaN(val) && val > maxNumeric && val < 90000) {
+          maxNumeric = val;
+        }
+      }
+    }
+  }
+
+  let candidate = maxNumeric + 1 + offset;
+  while (usedNumbers.has(`${prefix}${candidate}`.toUpperCase())) {
+    candidate++;
+  }
+
+  return `${prefix}${candidate}`;
+}
+
+/**
  * Format date nicely in Uzbek format (e.g. 2026-yil 14-sentabr)
  */
 export function formatUzbekCertificateDate(dateStr?: string): string {

@@ -5154,6 +5154,7 @@ export const AdminDashboard: React.FC<Props> = ({
         isOpen={isCertIssueModalOpen}
         onClose={() => setIsCertIssueModalOpen(false)}
         students={students}
+        certificates={certificates}
         currentUser={currentUser}
         onSubmit={handleIssueCertificate}
         onSubmitBulk={handleIssueCertificatesBulk}

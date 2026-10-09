@@ -26,14 +26,17 @@ import {
   ChevronRight,
   Info,
   ListCheck,
+  AlertTriangle,
+  Check,
 } from 'lucide-react';
-import type { StudentProfile, UserAccount } from '../types';
+import type { StudentProfile, UserAccount, CertificateItem } from '../types';
 import {
   PRESET_TEMPLATES,
   PresetTemplate,
   CertificateData,
   downloadCertificatePdf,
   downloadBulkCertificatesPdf,
+  generateNextCertificateNumber,
 } from '../lib/certificateGenerator';
 import { CertificateLivePreview } from './CertificateLivePreview';
 import { CertificateDesignSelector } from './CertificateDesignSelector';
@@ -77,6 +80,7 @@ interface IssueCertificateModalProps {
   onSubmit: (certData: SingleCertificatePayload) => Promise<void>;
   onSubmitBulk?: (certsData: SingleCertificatePayload[]) => Promise<void>;
   isSubmitting: boolean;
+  certificates?: CertificateItem[];
 }
 
 export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
@@ -87,6 +91,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   onSubmit,
   onSubmitBulk,
   isSubmitting,
+  certificates = [],
 }) => {
   // Active non-deleted students
   const activeStudents = useMemo(() => {
@@ -125,11 +130,15 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
 
   // 2. Document basics
   const [docType, setDocType] = useState<'diplom' | 'sertifikat'>('diplom');
-  const [certNumber, setCertNumber] = useState<string>(
-    () => `CERT-2026-${Math.floor(1000 + Math.random() * 9000)}`
+  const [certNumber, setCertNumber] = useState<string>(() =>
+    generateNextCertificateNumber('diplom', certificates)
   );
-  const [bulkPrefix, setBulkPrefix] = useState<string>('CERT-2026-');
-  const [bulkStartNum, setBulkStartNum] = useState<number>(1001);
+  const [bulkPrefix, setBulkPrefix] = useState<string>('DIP-2026-');
+  const [bulkStartNum, setBulkStartNum] = useState<number>(() => {
+    const initialNum = generateNextCertificateNumber('diplom', certificates);
+    const match = initialNum.match(/(\d+)$/);
+    return match ? parseInt(match[1], 10) : 1001;
+  });
   const [issueDate, setIssueDate] = useState<string>(
     () => new Date().toISOString().split('T')[0]
   );
@@ -219,9 +228,35 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
     }
   };
 
-  // Generate random new certificate code
+  // Whenever the modal opens, automatically calculate the next fresh unique certificate number
+  useEffect(() => {
+    if (isOpen) {
+      const freshNum = generateNextCertificateNumber(docType, certificates);
+      setCertNumber(freshNum);
+      const freshPrefix = docType === 'diplom' ? 'DIP-2026-' : 'CERT-2026-';
+      setBulkPrefix(freshPrefix);
+      const match = freshNum.match(/(\d+)$/);
+      if (match) {
+        setBulkStartNum(parseInt(match[1], 10));
+      }
+    }
+  }, [isOpen]);
+
+  // Check if current certificate number is already used in the database
+  const isNumberAlreadyTaken = useMemo(() => {
+    if (!certNumber?.trim() || !certificates) return false;
+    const clean = certNumber.trim().toUpperCase();
+    return certificates.some(c => c.certificateNumber?.trim().toUpperCase() === clean);
+  }, [certNumber, certificates]);
+
+  // Generate next unused certificate code
   const handleRegenerateNumber = () => {
-    setCertNumber(`CERT-2026-${Math.floor(1000 + Math.random() * 9000)}`);
+    const freshNum = generateNextCertificateNumber(docType, certificates);
+    setCertNumber(freshNum);
+    const match = freshNum.match(/(\d+)$/);
+    if (match) {
+      setBulkStartNum(parseInt(match[1], 10));
+    }
   };
 
   // Single student dropdown select
@@ -239,18 +274,24 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   // Toggle document type
   const handleDocTypeChange = (type: 'diplom' | 'sertifikat') => {
     setDocType(type);
+    const freshNum = generateNextCertificateNumber(type, certificates);
+    setCertNumber(freshNum);
+    const freshPrefix = type === 'diplom' ? 'DIP-2026-' : 'CERT-2026-';
+    setBulkPrefix(freshPrefix);
+    const match = freshNum.match(/(\d+)$/);
+    if (match) {
+      setBulkStartNum(parseInt(match[1], 10));
+    }
     if (type === 'diplom') {
       setTitle('DIPLOM');
       setSubtitle('Tanlov g‘olibi');
       setAwardLevel('Tanlov g‘olibi');
       setPresentedToText('Ushbu diplom');
-      if (bulkPrefix === 'CERT-2026-') setBulkPrefix('DIP-2026-');
     } else {
       setTitle('SERTIFIKAT');
       setSubtitle('Faxriy sertifikat');
       setAwardLevel('Ishtirokchi');
       setPresentedToText('Ushbu sertifikat');
-      if (bulkPrefix === 'DIP-2026-') setBulkPrefix('CERT-2026-');
     }
   };
 
@@ -269,10 +310,13 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
     if (tmpl.confirmationText) {
       setConfirmationText(tmpl.confirmationText);
     }
-    if (tmpl.documentType === 'diplom' && bulkPrefix.startsWith('CERT-')) {
-      setBulkPrefix('DIP-2026-');
-    } else if (tmpl.documentType === 'sertifikat' && bulkPrefix.startsWith('DIP-')) {
-      setBulkPrefix('CERT-2026-');
+    const freshNum = generateNextCertificateNumber(tmpl.documentType, certificates);
+    setCertNumber(freshNum);
+    const freshPrefix = tmpl.documentType === 'diplom' ? 'DIP-2026-' : 'CERT-2026-';
+    setBulkPrefix(freshPrefix);
+    const match = freshNum.match(/(\d+)$/);
+    if (match) {
+      setBulkStartNum(parseInt(match[1], 10));
     }
   };
 
@@ -344,7 +388,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
   // Helper to generate unique certificate number
   const getCertNumberForIndex = (index: number) => {
     if (issuanceMode === 'single') {
-      return certNumber.trim() || 'CERT-2026-6395';
+      return certNumber.trim() || generateNextCertificateNumber(docType, certificates);
     }
     const cleanPrefix = bulkPrefix.trim() || (docType === 'diplom' ? 'DIP-2026-' : 'CERT-2026-');
     return `${cleanPrefix}${bulkStartNum + index}`;
@@ -478,6 +522,13 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
         alert("Iltimos, talabaning F.I.Sh.ni kiriting yoki ro'yxatdan tanlang.");
         return;
       }
+
+      // Guarantee 100% unique certificate number before submission
+      let finalCertNumber = certNumber.trim();
+      if (!finalCertNumber || isNumberAlreadyTaken) {
+        finalCertNumber = generateNextCertificateNumber(docType, certificates);
+      }
+
       await onSubmit({
         studentId: selectedStudentId || 'manual',
         studentName: studentFullName.trim(),
@@ -485,7 +536,7 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
         title: title.trim(),
         organizationName: organizationName.trim(),
         issueDate: issueDate,
-        certificateNumber: certNumber.trim(),
+        certificateNumber: finalCertNumber,
         documentType: docType,
         subtitle: subtitle.trim(),
         awardLevel: awardLevel.trim(),
@@ -504,6 +555,18 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
         designId: selectedDesignId,
         backgroundPattern: selectedPatternId,
       });
+
+      // Immediately advance to next unique number so subsequent certificates NEVER share this number!
+      const nextFresh = generateNextCertificateNumber(
+        docType,
+        [...(certificates || []), { certificateNumber: finalCertNumber }],
+        1
+      );
+      setCertNumber(nextFresh);
+      const match = nextFresh.match(/(\d+)$/);
+      if (match) {
+        setBulkStartNum(parseInt(match[1], 10));
+      }
     } else {
       if (effectiveStudentsList.length === 0) {
         alert("Iltimos, sertifikat berish uchun kamida 1 ta talabani tanlang.");
@@ -547,6 +610,11 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
           await onSubmit(item);
         }
       }
+
+      // Advance bulk start num and single cert number beyond this batch
+      const nextStart = bulkStartNum + effectiveStudentsList.length + 1;
+      setBulkStartNum(nextStart);
+      setCertNumber(`${bulkPrefix}${nextStart}`);
     }
   };
 
@@ -796,40 +864,74 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
 
                   {issuanceMode === 'single' ? (
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                        Diplom / Sertifikat raqami *
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Diplom / Sertifikat raqami *
+                        </label>
+                        <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                          Unikal reestr raqami
+                        </span>
+                      </div>
                       <div className="relative">
                         <input
                           type="text"
                           required
                           value={certNumber}
-                          onChange={e => setCertNumber(e.target.value)}
-                          placeholder="CERT-2026-XXXX"
-                          className="w-full pl-3.5 pr-10 py-2 text-sm font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 text-emerald-900"
+                          onChange={e => setCertNumber(e.target.value.toUpperCase())}
+                          placeholder={docType === 'diplom' ? 'DIP-2026-XXXX' : 'CERT-2026-XXXX'}
+                          className={`w-full pl-3.5 pr-10 py-2 text-sm font-mono font-bold rounded-xl focus:outline-none focus:ring-2 text-emerald-900 ${
+                            isNumberAlreadyTaken
+                              ? 'bg-rose-50 border border-rose-300 focus:ring-rose-500'
+                              : 'bg-slate-50 border border-slate-200 focus:ring-emerald-600'
+                          }`}
                         />
                         <button
                           type="button"
                           onClick={handleRegenerateNumber}
-                          title="Yangi unikal raqam generatsiya qilish"
-                          className="absolute right-2 top-2 text-slate-400 hover:text-emerald-700 p-1 rounded-md transition-colors"
+                          title="Keyingi yangi unikal raqamni olish"
+                          className="absolute right-2 top-2 text-slate-400 hover:text-emerald-700 p-1 rounded-md transition-colors cursor-pointer"
                         >
                           <RefreshCw className="w-4 h-4" />
                         </button>
                       </div>
+                      {isNumberAlreadyTaken ? (
+                        <div className="flex items-center justify-between text-[11px] text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1.5 rounded-lg mt-1.5">
+                          <span className="flex items-center gap-1 font-semibold">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
+                            Bu raqam allaqachon mavjud!
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleRegenerateNumber}
+                            className="underline font-bold text-rose-800 hover:text-rose-950 cursor-pointer text-xs"
+                          >
+                            Unikal raqam olish
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-emerald-600 flex items-center gap-1 mt-1 font-medium">
+                          <Check className="w-3 h-3 text-emerald-600" />
+                          <span>Ushbu raqam erkin va reestrda unikal</span>
+                        </p>
+                      )}
                     </div>
                   ) : (
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                        Unikal raqamlash formati (Prefiks & Start) *
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-slate-700">
+                          Unikal raqamlash formati (Prefiks & Start) *
+                        </label>
+                        <span className="text-[10px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                          Har bir talabaga alohida unikal raqam
+                        </span>
+                      </div>
                       <div className="flex items-center gap-2">
                         <input
                           type="text"
                           required
                           value={bulkPrefix}
-                          onChange={e => setBulkPrefix(e.target.value)}
-                          placeholder="CERT-2026-"
+                          onChange={e => setBulkPrefix(e.target.value.toUpperCase())}
+                          placeholder={docType === 'diplom' ? 'DIP-2026-' : 'CERT-2026-'}
                           className="w-28 px-2.5 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 text-emerald-900"
                         />
                         <input
@@ -840,12 +942,23 @@ export const IssueCertificateModal: React.FC<IssueCertificateModalProps> = ({
                           onChange={e => setBulkStartNum(Math.max(1, Number(e.target.value) || 1))}
                           className="w-24 px-2.5 py-2 text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 text-emerald-900"
                         />
+                        <button
+                          type="button"
+                          onClick={handleRegenerateNumber}
+                          title="Unikal start raqamini yangilash"
+                          className="p-2 border border-slate-200 rounded-xl text-slate-500 hover:text-emerald-700 hover:bg-slate-50 cursor-pointer"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-1">
                         {totalCount > 0 ? (
                           <>
                             Diapazon: <strong className="font-mono text-emerald-800">{getCertNumberForIndex(0)}</strong>{' '}
                             dan <strong className="font-mono text-emerald-800">{getCertNumberForIndex(totalCount - 1)}</strong> gacha
+                            <span className="text-emerald-700 ml-1 font-semibold">
+                              (Jami {totalCount} ta talabaning har biriga alohida unikal raqam beriladi)
+                            </span>
                           </>
                         ) : (
                           'Talabalar tanlanishi bilan avtomatik unikal ketma-ketlik beriladi'
