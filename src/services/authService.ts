@@ -905,15 +905,33 @@ export async function toggleUserBlockStatus(
   actorId: string,
   actorName: string
 ) {
-  const userRef = doc(db, 'users', userId);
-  await updateDoc(userRef, { isActive, updatedAt: new Date().toISOString() });
-  await logAuditAction(
-    { id: actorId, fullName: actorName, role: 'superAdmin' },
-    isActive ? "Admin faollashtirildi" : "Admin bloklandi",
-    'users',
-    userId,
-    `Admin holati: ${isActive ? 'Faol' : 'Bloklangan'}`
-  );
+  const existingUser = offlineStore.getById('users', userId);
+  if (existingUser) {
+    offlineStore.saveItem('users', {
+      ...existingUser,
+      isActive,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, { isActive, updatedAt: new Date().toISOString() }, { merge: true });
+  } catch (err) {
+    console.warn('Firestore toggleUserBlockStatus note:', err);
+  }
+
+  try {
+    await logAuditAction(
+      { id: actorId, fullName: actorName, role: 'superAdmin' },
+      isActive ? "Admin faollashtirildi" : "Admin bloklandi",
+      'users',
+      userId,
+      `Admin holati: ${isActive ? 'Faol' : 'Bloklangan'}`
+    );
+  } catch (auditErr) {
+    console.warn('Audit log note:', auditErr);
+  }
 }
 
 export async function createAdminUserWithPermissions(
@@ -1186,16 +1204,27 @@ export async function updateAdminProfile(
   if (data.role !== undefined) updates.role = data.role;
   if (data.isActive !== undefined) updates.isActive = data.isActive;
 
-  const userRef = doc(db, 'users', adminId);
-  await updateDoc(userRef, updates);
+  const existing = offlineStore.getById('users', adminId);
+  offlineStore.saveItem('users', { ...(existing || {}), ...updates, id: adminId });
 
-  await logAuditAction(
-    actor,
-    "Admin profili tahrirlandi",
-    'users',
-    adminId,
-    `Admin profili yangilandi: ${updates.fullName || adminId}`
-  );
+  try {
+    const userRef = doc(db, 'users', adminId);
+    await setDoc(userRef, updates, { merge: true });
+  } catch (err) {
+    console.warn("Firestore updateAdminProfile note:", err);
+  }
+
+  try {
+    await logAuditAction(
+      actor,
+      "Admin profili tahrirlandi",
+      'users',
+      adminId,
+      `Admin profili yangilandi: ${updates.fullName || existing?.fullName || adminId}`
+    );
+  } catch (auditErr) {
+    console.warn("Audit log note:", auditErr);
+  }
 }
 
 export async function changeUserRole(
@@ -1219,22 +1248,41 @@ export async function softDeleteUser(
 
   const actorName = actor.fullName || (actor as any).name || actor.id || 'Admin';
 
-  const userRef = doc(db, 'users', userId);
-  await updateDoc(userRef, {
-    isDeleted: true,
-    deletedAt: new Date().toISOString(),
-    deletedBy: actorName,
-    isActive: false,
-    updatedAt: new Date().toISOString(),
-  });
+  // 1. Immediately update offlineStore memory and IndexedDB (synchronous reactive UI)
+  offlineStore.deleteItem('users', userId, true);
+  offlineStore.deleteItem('students', userId, true);
+  offlineStore.deleteItem('supervisors', userId, true);
 
-  await logAuditAction(
-    actor,
-    "Admin/Foydalanuvchi o'chirildi (Soft delete)",
-    'users',
-    userId,
-    `Foydalanuvchi chiqindilar qutisiga o'tkazildi.`
-  );
+  // 2. Safe Firestore persist
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(
+      userRef,
+      {
+        isDeleted: true,
+        deletedAt: new Date().toISOString(),
+        deletedBy: actorName,
+        isActive: false,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("Firestore softDeleteUser note (offline/local fallback):", err);
+  }
+
+  // 3. Audit log
+  try {
+    await logAuditAction(
+      actor,
+      "Admin/Foydalanuvchi o'chirildi (Soft delete)",
+      'users',
+      userId,
+      `Foydalanuvchi chiqindilar qutisiga o'tkazildi.`
+    );
+  } catch (auditErr) {
+    console.warn("Audit log note:", auditErr);
+  }
 }
 
 export async function restoreUser(
@@ -1245,22 +1293,46 @@ export async function restoreUser(
     throw new Error("Faqat Super Admin yoki Admin hisobni qayta tiklay oladi!");
   }
 
-  const userRef = doc(db, 'users', userId);
-  await updateDoc(userRef, {
-    isDeleted: false,
-    deletedAt: null,
-    deletedBy: null,
-    isActive: true,
-    updatedAt: new Date().toISOString(),
-  });
+  const existingUser = offlineStore.getById('users', userId);
+  if (existingUser) {
+    offlineStore.saveItem('users', {
+      ...existingUser,
+      isDeleted: false,
+      deletedAt: null,
+      deletedBy: null,
+      isActive: true,
+      updatedAt: new Date().toISOString(),
+    });
+  }
 
-  await logAuditAction(
-    actor,
-    "Foydalanuvchi qayta tiklandi",
-    'users',
-    userId,
-    `Foydalanuvchi chiqindilar qutisidan tiklandi.`
-  );
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(
+      userRef,
+      {
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn("Firestore restoreUser note:", err);
+  }
+
+  try {
+    await logAuditAction(
+      actor,
+      "Foydalanuvchi qayta tiklandi",
+      'users',
+      userId,
+      `Foydalanuvchi chiqindilar qutisidan tiklandi.`
+    );
+  } catch (auditErr) {
+    console.warn("Audit log note:", auditErr);
+  }
 }
 
 export async function permanentDeleteUser(
@@ -1274,15 +1346,30 @@ export async function permanentDeleteUser(
     throw new Error("O'z hisobingizni o'chira olmaysiz!");
   }
 
-  await deleteDoc(doc(db, 'users', userId));
+  // 1. Immediately remove from offlineStore
+  offlineStore.deleteItem('users', userId, false);
+  offlineStore.deleteItem('students', userId, false);
+  offlineStore.deleteItem('supervisors', userId, false);
 
-  await logAuditAction(
-    actor,
-    "Foydalanuvchi butunlay o'chirildi (Permanent delete)",
-    'users',
-    userId,
-    `Foydalanuvchi hisobi ma'lumotlar bazasidan butunlay tozalandi.`
-  );
+  // 2. Safe Firestore deletion
+  try {
+    await deleteDoc(doc(db, 'users', userId));
+  } catch (err) {
+    console.warn("Firestore permanentDeleteUser note:", err);
+  }
+
+  // 3. Audit log
+  try {
+    await logAuditAction(
+      actor,
+      "Foydalanuvchi butunlay o'chirildi (Permanent delete)",
+      'users',
+      userId,
+      `Foydalanuvchi hisobi ma'lumotlar bazasidan butunlay tozalandi.`
+    );
+  } catch (auditErr) {
+    console.warn("Audit log note:", auditErr);
+  }
 }
 
 

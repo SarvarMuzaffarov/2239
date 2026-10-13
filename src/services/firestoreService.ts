@@ -1640,9 +1640,8 @@ export function subscribeAuditLogs(onUpdate: (logs: AuditLog[]) => void): Unsubs
 // ----------------- USERS & ADMINS -----------------
 export function subscribeUsers(onUpdate: (users: UserAccount[]) => void): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('users', list => {
-    const active = list.filter(u => !u.isDeleted);
-    active.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
-    onUpdate(active);
+    const sorted = [...list].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+    onUpdate(sorted);
   });
 
   let unsubFirestore = () => {};
