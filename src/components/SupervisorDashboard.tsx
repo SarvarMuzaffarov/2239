@@ -28,6 +28,7 @@ import {
   updateAchievementStatus,
 } from '../services/firestoreService';
 import { generateStudentPortfolioPdf } from '../lib/portfolioGenerator';
+import { PortfolioExportModal } from './PortfolioExportModal';
 import { DirectionSelect } from './DirectionSelect';
 import { canonicalizeDirection } from '../constants/directions';
 import { Search } from 'lucide-react';
@@ -76,6 +77,7 @@ export const SupervisorDashboard: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<TabType>('students');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [generatingPortfolioStudentId, setGeneratingPortfolioStudentId] = useState<string | null>(null);
+  const [portfolioModalStudent, setPortfolioModalStudent] = useState<StudentProfile | null>(null);
 
   // Reject modal state
   const [rejectModalItem, setRejectModalItem] = useState<{
@@ -405,16 +407,11 @@ export const SupervisorDashboard: React.FC<Props> = ({
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
-                        onClick={() => handleDownloadStudentPortfolio(student)}
-                        disabled={generatingPortfolioStudentId === student.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-                        title="Talaba portfoliosini PDF yuklab olish"
+                        onClick={() => setPortfolioModalStudent(student)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors cursor-pointer"
+                        title="Talaba portfoliosini PDF shakllantirish va yuklab olish"
                       >
-                        {generatingPortfolioStudentId === student.id ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Download className="w-3.5 h-3.5" />
-                        )}
+                        <Download className="w-3.5 h-3.5" />
                         <span>Portfolio (PDF)</span>
                       </button>
 
@@ -873,6 +870,23 @@ export const SupervisorDashboard: React.FC<Props> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* Portfolio Export Modal */}
+      {portfolioModalStudent && (
+        <PortfolioExportModal
+          isOpen={!!portfolioModalStudent}
+          onClose={() => setPortfolioModalStudent(null)}
+          student={portfolioModalStudent}
+          supervisor={myProfile}
+          projects={projects.filter(p => p.studentId === portfolioModalStudent.id && p.type === 'loyiha')}
+          startups={projects.filter(p => p.studentId === portfolioModalStudent.id && p.type === 'startap')}
+          achievements={achievements.filter(a => a.studentId === portfolioModalStudent.id)}
+          certificates={(certificates || []).filter(c => c.studentId === portfolioModalStudent.id)}
+          languageCertificates={(languageCertificates || []).filter(c => c.studentId === portfolioModalStudent.id)}
+          events={(events || []).filter(e => e.participantIds?.includes(portfolioModalStudent.id))}
+          onNotify={onNotify || (() => {})}
+        />
       )}
     </div>
   );

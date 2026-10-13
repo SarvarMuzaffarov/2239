@@ -63,6 +63,7 @@ import { CertificateEditModal } from './admin/CertificateEditModal';
 import { RevokeCertificateModal } from './admin/RevokeCertificateModal';
 import { ResetPasswordModal } from './admin/ResetPasswordModal';
 import { TopStudentsManageModal } from './TopStudentsManageModal';
+import { PortfolioExportModal } from './PortfolioExportModal';
 import { hasPermission } from '../lib/permissions';
 import {
   updateProjectOrStartupStatus,
@@ -375,6 +376,7 @@ export const AdminDashboard: React.FC<Props> = ({
   const [editingStudent, setEditingStudent] = useState<StudentProfile | null>(null);
   const [isEditStudentModalOpen, setIsEditStudentModalOpen] = useState(false);
   const [isTopStudentsModalOpen, setIsTopStudentsModalOpen] = useState(false);
+  const [portfolioModalStudent, setPortfolioModalStudent] = useState<StudentProfile | null>(null);
 
   // Edit Supervisor Modal state
   const [editingSupervisor, setEditingSupervisor] = useState<SupervisorProfile | null>(null);
@@ -2247,6 +2249,17 @@ export const AdminDashboard: React.FC<Props> = ({
                             <span>Profil</span>
                           </button>
 
+                          <button
+                            type="button"
+                            id={`download-student-portfolio-mobile-${st.id}`}
+                            onClick={() => setPortfolioModalStudent(st)}
+                            className="min-h-[40px] px-2.5 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Talaba portfoliosini (PDF) yuklab olish"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>Portfolio</span>
+                          </button>
+
                           {hasPermission(currentUser, 'students', 'edit') && (
                             <button
                               type="button"
@@ -2406,6 +2419,15 @@ export const AdminDashboard: React.FC<Props> = ({
                                   title="Talaba to‘liq profilini ko‘rish"
                                 >
                                   <ExternalLink className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  id={`download-student-portfolio-desktop-${st.id}`}
+                                  onClick={() => setPortfolioModalStudent(st)}
+                                  className="p-1.5 text-emerald-700 hover:text-emerald-900 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Talaba portfoliosini (PDF) yuklab olish"
+                                >
+                                  <Download className="w-4 h-4" />
                                 </button>
                                 {hasPermission(currentUser, 'students', 'edit') && (
                                   <button
@@ -5978,6 +6000,23 @@ export const AdminDashboard: React.FC<Props> = ({
         achievements={achievements}
         onNotify={onNotify}
       />
+
+      {/* Portfolio Export Modal */}
+      {portfolioModalStudent && (
+        <PortfolioExportModal
+          isOpen={!!portfolioModalStudent}
+          onClose={() => setPortfolioModalStudent(null)}
+          student={portfolioModalStudent}
+          supervisor={supervisors.find((s) => s.id === portfolioModalStudent.supervisorId)}
+          projects={projects.filter((p) => p.studentId === portfolioModalStudent.id && p.type === 'loyiha')}
+          startups={projects.filter((p) => p.studentId === portfolioModalStudent.id && p.type === 'startap')}
+          achievements={achievements.filter((a) => a.studentId === portfolioModalStudent.id)}
+          certificates={certificates.filter((c) => c.studentId === portfolioModalStudent.id)}
+          languageCertificates={(languageCertificates || []).filter((c) => c.studentId === portfolioModalStudent.id)}
+          events={events.filter((e) => e.participantIds?.includes(portfolioModalStudent.id))}
+          onNotify={onNotify}
+        />
+      )}
     </div>
   );
 };

@@ -41,6 +41,7 @@ import { CertificatePreviewModal } from './CertificatePreviewModal';
 import { downloadCertificatePdf } from '../lib/certificateGenerator';
 import { DirectionSelect } from './DirectionSelect';
 import { canonicalizeDirection, isValidDirection } from '../constants/directions';
+import { PortfolioExportModal } from './PortfolioExportModal';
 
 interface StudentProfileModalProps {
   isOpen: boolean;
@@ -82,6 +83,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const [selectedSupervisorId, setSelectedSupervisorId] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [previewCert, setPreviewCert] = useState<CertificateItem | null>(null);
+  const [isPortfolioExportOpen, setIsPortfolioExportOpen] = useState(false);
 
   // Quick edit mode for admins
   const [isEditingBasic, setIsEditingBasic] = useState(false);
@@ -306,6 +308,19 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                     <User className="w-3.5 h-3.5 text-blue-300" />
                     Ilmiy rahbar: <strong className="text-white ml-0.5">{mySupervisor ? mySupervisor.fullName : student.customSupervisorName || 'Biriktirilmagan'}</strong>
                   </span>
+                </div>
+
+                <div className="flex items-center gap-3 mt-3">
+                  <button
+                    type="button"
+                    id="export-student-portfolio-top-btn"
+                    onClick={() => setIsPortfolioExportOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold text-xs shadow-sm transition-all hover:scale-102 cursor-pointer"
+                    title="Talaba portfoliosini (PDF) shakllantirish va yuklab olish"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-950" />
+                    <span>Portfolioni yuklab olish (PDF)</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -954,17 +969,47 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
         )}
 
         {/* Footer */}
-        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-end">
+        <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            {hasAccess && student && (
+              <button
+                type="button"
+                id="export-student-portfolio-bottom-btn"
+                onClick={() => setIsPortfolioExportOpen(true)}
+                className="px-4 py-2 text-xs font-bold text-slate-950 bg-amber-400 hover:bg-amber-300 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+              >
+                <Download className="w-4 h-4 text-slate-950" />
+                <span>Portfolioni yuklab olish (PDF)</span>
+              </button>
+            )}
+          </div>
           <button
             type="button"
             id="close-student-profile-bottom-btn"
             onClick={onClose}
-            className="px-5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors shadow-2xs"
+            className="px-5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl transition-colors shadow-2xs cursor-pointer"
           >
             Yopish
           </button>
         </div>
       </div>
+
+      {/* Portfolio Export Modal */}
+      {student && (
+        <PortfolioExportModal
+          isOpen={isPortfolioExportOpen}
+          onClose={() => setIsPortfolioExportOpen(false)}
+          student={student}
+          supervisor={mySupervisor || undefined}
+          projects={studentProjects}
+          startups={studentStartups}
+          achievements={studentAchievements}
+          certificates={studentCertificates}
+          languageCertificates={studentLangCerts}
+          events={studentEvents}
+          onNotify={onNotify}
+        />
+      )}
 
       {/* Certificate Preview Modal */}
       <CertificatePreviewModal

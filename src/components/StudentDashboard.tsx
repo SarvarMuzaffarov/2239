@@ -53,6 +53,7 @@ import { DirectionSelect } from './DirectionSelect';
 import { generateLanguageCertificatePdfDataUrl } from '../lib/languageCertificateGenerator';
 import { canonicalizeDirection } from '../constants/directions';
 import { generateStudentPortfolioPdf } from '../lib/portfolioGenerator';
+import { PortfolioExportModal } from './PortfolioExportModal';
 import { getDeadlineInfo } from '../lib/deadlineHelper';
 import type {
   UserAccount,
@@ -266,6 +267,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
   // Portfolio PDF download state
   const [isGeneratingPortfolio, setIsGeneratingPortfolio] = useState(false);
+  const [isPortfolioModalOpen, setIsPortfolioModalOpen] = useState(false);
 
   // Event Registration with Project Selection Modal state
   const [registeringEvent, setRegisteringEvent] = useState<EventItem | null>(null);
@@ -866,17 +868,13 @@ export const StudentDashboard: React.FC<Props> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleDownloadPortfolio}
-            disabled={isGeneratingPortfolio || !studentProfile}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs"
-            title="Rasmiy talaba portfoliosini PDF formatida yuklab olish"
+            onClick={() => setIsPortfolioModalOpen(true)}
+            disabled={!studentProfile}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white text-xs font-semibold rounded-xl transition-colors shadow-xs cursor-pointer"
+            title="Rasmiy talaba portfoliosini PDF formatida shakllantirish va yuklab olish"
           >
-            {isGeneratingPortfolio ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Download className="w-4 h-4" />
-            )}
-            <span>{isGeneratingPortfolio ? 'Tayyorlanmoqda...' : 'Portfolio (PDF)'}</span>
+            <Download className="w-4 h-4" />
+            <span>Portfolio (PDF)</span>
           </button>
           <button
             onClick={() => {
@@ -2939,6 +2937,23 @@ export const StudentDashboard: React.FC<Props> = ({
           onSaveSuccess={() => {}}
           onNotify={onNotify}
           onOpenPdf={onOpenPdf}
+        />
+      )}
+
+      {/* PORTFOLIO EXPORT MODAL */}
+      {isPortfolioModalOpen && studentProfile && (
+        <PortfolioExportModal
+          isOpen={isPortfolioModalOpen}
+          onClose={() => setIsPortfolioModalOpen(false)}
+          student={studentProfile}
+          supervisor={mySupervisor || undefined}
+          projects={myProjects}
+          startups={myStartups}
+          achievements={myAchievements}
+          certificates={myCertificates}
+          languageCertificates={myLanguageCertificates}
+          events={events.filter((e) => e.participantIds?.includes(studentId))}
+          onNotify={onNotify}
         />
       )}
     </div>
