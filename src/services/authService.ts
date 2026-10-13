@@ -17,6 +17,7 @@ import {
   verifyPassword,
   normalizePhone,
   isValidUzbekPhone,
+  formatUzbekPhone,
   validatePasswordStrength,
   formatRemainingSeconds,
 } from '../lib/crypto';
@@ -331,6 +332,139 @@ export async function registerStudent(data: {
 
   saveUserSession(userAccount);
   return { user: userAccount, student: studentProfile };
+}
+
+/**
+ * Admin Student Registration
+ * Creates a student profile and login credentials without altering admin's active session.
+ * Fully integrates with both offlineStore memory/IndexedDB and Firestore.
+ */
+export async function registerStudentByAdmin(
+  actor: { id: string; fullName: string; role: UserRole },
+  data: {
+    fullName: string;
+    phone: string;
+    course: number;
+    group: string;
+    facultyOrField: string;
+    supervisorId?: string;
+    customSupervisorName?: string;
+    password?: string;
+  }
+): Promise<{ user: UserAccount; student: StudentProfile; initialPassword: string }> {
+  if (actor.role !== 'superAdmin' && actor.role !== 'admin') {
+    throw new Error("Faqat administrator yangi talaba qo'sha oladi!");
+  }
+
+  const normalized = normalizePhone(data.phone);
+  if (!isValidUzbekPhone(normalized)) {
+    throw new Error("Telefon raqami formati noto'g'ri. Masalan: +998 (90) 123-45-67");
+  }
+
+  if (!data.fullName.trim()) {
+    throw new Error("F.I.Sh. (Familiya, Ism, Sharif) kiritilishi shart.");
+  }
+
+  if (!data.course || data.course < 1 || data.course > 5) {
+    throw new Error("Iltimos, o'quv kursini to'g'ri tanlang (1-5 kurs).");
+  }
+
+  if (!data.group.trim()) {
+    throw new Error("Akademik guruh raqami yoki nomini kiriting.");
+  }
+
+  if (!data.facultyOrField || !data.facultyOrField.trim()) {
+    throw new Error("Ta'lim yo'nalishi tanlanishi shart.");
+  }
+
+  if (!isValidDirection(data.facultyOrField)) {
+    throw new Error("Noto'g'ri ta'lim yo'nalishi. Faqat rasmiy 18 ta yo'nalishdan birini tanlang.");
+  }
+
+  const canonicalFaculty = canonicalizeDirection(data.facultyOrField);
+
+  // Check phone in local offlineStore first (guarantees instantaneous duplicate detection)
+  const existingLocalUser = offlineStore.get('users').find(u => !u.isDeleted && u.phone === normalized);
+  if (existingLocalUser) {
+    throw new Error(`Ushbu telefon raqam (${formatUzbekPhone(normalized)}) bilan ro'yxatdan o'tgan foydalanuvchi allaqachon mavjud.`);
+  }
+
+  // Also check Firestore
+  try {
+    const qPhone = query(collection(db, 'users'), where('phone', '==', normalized), limit(1));
+    const snap = await getDocs(qPhone);
+    if (!snap.empty) {
+      throw new Error(`Ushbu telefon raqam (${formatUzbekPhone(normalized)}) allaqachon bazada mavjud.`);
+    }
+  } catch (err: any) {
+    if (err?.message?.includes('mavjud')) throw err;
+  }
+
+  // Generate password if not supplied
+  let finalPassword = data.password?.trim() || '';
+  if (!finalPassword) {
+    // Generate secure default password: e.g. Talaba2026@742
+    const randomSuffix = Math.floor(100 + Math.random() * 900);
+    finalPassword = `Talaba2026@${randomSuffix}`;
+  } else {
+    const pwdCheck = validatePasswordStrength(finalPassword);
+    if (!pwdCheck.isValid) {
+      throw new Error("Parol xavfsizlik talablariga javob bermaydi: " + pwdCheck.errors.join(' '));
+    }
+  }
+
+  const salt = generateSalt();
+  const passwordHash = await hashPassword(finalPassword, salt);
+
+  const userRef = doc(collection(db, 'users'));
+  const studentRef = doc(collection(db, 'students'));
+
+  const userAccount: UserAccount = {
+    id: userRef.id,
+    phone: normalized,
+    passwordHash,
+    salt,
+    role: 'student',
+    fullName: data.fullName.trim(),
+    isActive: true,
+    createdAt: new Date().toISOString(),
+  };
+
+  const studentProfile: StudentProfile = {
+    id: studentRef.id,
+    userId: userRef.id,
+    fullName: data.fullName.trim(),
+    phone: normalized,
+    course: Number(data.course),
+    group: data.group.trim().toUpperCase(),
+    facultyOrField: canonicalFaculty,
+    supervisorId: data.supervisorId || '',
+    customSupervisorName: data.customSupervisorName?.trim() || '',
+    createdAt: new Date().toISOString(),
+  };
+
+  // 1. Immediately update offlineStore memory and IndexedDB (triggers real-time subscriptions)
+  offlineStore.saveItem('users', userAccount);
+  offlineStore.saveItem('students', studentProfile);
+
+  // 2. Persist to Firestore
+  try {
+    await setDoc(userRef, userAccount);
+    await setDoc(studentRef, studentProfile);
+  } catch (err) {
+    console.warn('Firestore registerStudentByAdmin note (saved locally):', err);
+  }
+
+  // 3. Log audit action
+  await logAuditAction(
+    actor,
+    "Talaba qo'shildi",
+    'students',
+    studentProfile.id,
+    `Administrator tomonidan yangi talaba ro'yxatga olindi: ${studentProfile.fullName} (${studentProfile.group}, ${studentProfile.course}-kurs)`
+  );
+
+  return { user: userAccount, student: studentProfile, initialPassword: finalPassword };
 }
 
 /**

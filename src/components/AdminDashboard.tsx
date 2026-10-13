@@ -48,11 +48,13 @@ import {
   Loader2,
   Upload,
   Sparkles,
+  UserPlus,
 } from 'lucide-react';
 import { offlineStore } from '../lib/offlineStore';
 import { uploadPdfDocument } from '../lib/storage';
 import { EmptyState } from './EmptyState';
 import { EditStudentModal } from './EditStudentModal';
+import { AddStudentModal } from './AddStudentModal';
 import { EditSupervisorModal } from './EditSupervisorModal';
 import { EditProjectModal } from './EditProjectModal';
 import { IssueCertificateModal } from './IssueCertificateModal';
@@ -375,6 +377,7 @@ export const AdminDashboard: React.FC<Props> = ({
   // Edit Student Modal state
   const [editingStudent, setEditingStudent] = useState<StudentProfile | null>(null);
   const [isEditStudentModalOpen, setIsEditStudentModalOpen] = useState(false);
+  const [isAddStudentModalOpen, setIsAddStudentModalOpen] = useState(false);
   const [isTopStudentsModalOpen, setIsTopStudentsModalOpen] = useState(false);
   const [portfolioModalStudent, setPortfolioModalStudent] = useState<StudentProfile | null>(null);
 
@@ -2028,6 +2031,18 @@ export const AdminDashboard: React.FC<Props> = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              {(hasPermission(currentUser, 'students', 'create') || currentUser.role === 'superAdmin') && (
+                <button
+                  type="button"
+                  id="admin-add-student-btn"
+                  onClick={() => setIsAddStudentModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs rounded-xl transition-all shadow-xs cursor-pointer active:scale-[0.99]"
+                  title="Yangi talaba anketasini qo‘shish va ro‘yxatdan o‘tkazish"
+                >
+                  <UserPlus className="w-4 h-4 text-blue-200" />
+                  <span>Yangi talaba qo‘shish</span>
+                </button>
+              )}
               {(hasPermission(currentUser, 'students', 'edit') || currentUser.role === 'superAdmin') && (
                 <button
                   type="button"
@@ -5768,6 +5783,20 @@ export const AdminDashboard: React.FC<Props> = ({
             // Live Firestore subscription will update state automatically
           }}
           onNotify={onNotify}
+        />
+      )}
+
+      {/* Add Student Modal */}
+      {isAddStudentModalOpen && (
+        <AddStudentModal
+          isOpen={isAddStudentModalOpen}
+          onClose={() => setIsAddStudentModalOpen(false)}
+          currentUser={currentUser}
+          supervisors={supervisors}
+          onNotify={onNotify}
+          onStudentAdded={() => {
+            // Live Firestore subscription & offlineStore notify will update state automatically
+          }}
         />
       )}
 
