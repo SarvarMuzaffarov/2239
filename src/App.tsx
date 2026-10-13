@@ -7,16 +7,40 @@ import { DirectionDetailView } from './components/DirectionDetailView';
 import { PublicEventModal } from './components/PublicEventModal';
 import { PublicProjectModal } from './components/PublicProjectModal';
 import { PublicAnnouncementModal } from './components/PublicAnnouncementModal';
-import { StudentDashboard } from './components/StudentDashboard';
-import { SupervisorDashboard } from './components/SupervisorDashboard';
-import { AdminDashboard } from './components/AdminDashboard';
 import { NotificationToast } from './components/NotificationToast';
 import { ConfirmModal } from './components/ConfirmModal';
 import { PdfViewerModal } from './components/PdfViewerModal';
-import { VerifyCertificateModal } from './components/VerifyCertificateModal';
-import { EventParticipantsModal } from './components/EventParticipantsModal';
-import { StudentProfileModal } from './components/StudentProfileModal';
-import { TopStudentsManageModal } from './components/TopStudentsManageModal';
+
+// Code-splitting via React.lazy for heavy dashboards and modals
+const StudentDashboard = React.lazy(() =>
+  import('./components/StudentDashboard').then(m => ({ default: m.StudentDashboard }))
+);
+const SupervisorDashboard = React.lazy(() =>
+  import('./components/SupervisorDashboard').then(m => ({ default: m.SupervisorDashboard }))
+);
+const AdminDashboard = React.lazy(() =>
+  import('./components/AdminDashboard').then(m => ({ default: m.AdminDashboard }))
+);
+const VerifyCertificateModal = React.lazy(() =>
+  import('./components/VerifyCertificateModal').then(m => ({ default: m.VerifyCertificateModal }))
+);
+const EventParticipantsModal = React.lazy(() =>
+  import('./components/EventParticipantsModal').then(m => ({ default: m.EventParticipantsModal }))
+);
+const StudentProfileModal = React.lazy(() =>
+  import('./components/StudentProfileModal').then(m => ({ default: m.StudentProfileModal }))
+);
+const TopStudentsManageModal = React.lazy(() =>
+  import('./components/TopStudentsManageModal').then(m => ({ default: m.TopStudentsManageModal }))
+);
+
+const DashboardLoadingFallback = () => (
+  <div className="min-h-[50vh] flex flex-col items-center justify-center py-20 text-slate-500">
+    <div className="w-10 h-10 border-4 border-blue-900 border-t-transparent rounded-full animate-spin mb-4" />
+    <p className="text-sm font-semibold text-slate-700">Boshqaruv paneli yuklanmoqda...</p>
+    <p className="text-xs text-slate-400 mt-1">Iqtidorli talabalar axborot tizimi</p>
+  </div>
+);
 import {
   getCurrentUserSession,
   saveUserSession,
@@ -450,81 +474,97 @@ export default function App() {
       />
 
       {/* Certificate Verification Modal */}
-      <VerifyCertificateModal
-        isOpen={verifyModalOpen}
-        initialCertId={verifyInitialCertId}
-        onClose={() => {
-          setVerifyModalOpen(false);
-          setVerifyInitialCertId('');
-          if (window.location.hash.startsWith('#verify/')) {
-            window.location.hash = '';
-          }
-          if (window.location.pathname.startsWith('/verify/')) {
-            window.history.replaceState(null, '', '/');
-          }
-          if (window.location.search.includes('verify=') || window.location.search.includes('cert=') || window.location.search.includes('id=')) {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('verify');
-            url.searchParams.delete('cert');
-            url.searchParams.delete('id');
-            window.history.replaceState(null, '', url.pathname + (url.search ? url.search : '') + url.hash);
-          }
-        }}
-      />
+      {verifyModalOpen && (
+        <React.Suspense fallback={null}>
+          <VerifyCertificateModal
+            isOpen={verifyModalOpen}
+            initialCertId={verifyInitialCertId}
+            onClose={() => {
+              setVerifyModalOpen(false);
+              setVerifyInitialCertId('');
+              if (window.location.hash.startsWith('#verify/')) {
+                window.location.hash = '';
+              }
+              if (window.location.pathname.startsWith('/verify/')) {
+                window.history.replaceState(null, '', '/');
+              }
+              if (window.location.search.includes('verify=') || window.location.search.includes('cert=') || window.location.search.includes('id=')) {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('verify');
+                url.searchParams.delete('cert');
+                url.searchParams.delete('id');
+                window.history.replaceState(null, '', url.pathname + (url.search ? url.search : '') + url.hash);
+              }
+            }}
+          />
+        </React.Suspense>
+      )}
 
       {/* Event Participants Modal */}
-      <EventParticipantsModal
-        isOpen={!!selectedEventForParticipants}
-        event={selectedEventForParticipants}
-        students={students}
-        supervisors={supervisors}
-        currentUser={currentUser}
-        onClose={() => setSelectedEventForParticipants(null)}
-        onOpenStudentProfile={handleOpenStudentProfile}
-        onNotify={notify}
-      />
+      {selectedEventForParticipants && (
+        <React.Suspense fallback={null}>
+          <EventParticipantsModal
+            isOpen={!!selectedEventForParticipants}
+            event={selectedEventForParticipants}
+            students={students}
+            supervisors={supervisors}
+            currentUser={currentUser}
+            onClose={() => setSelectedEventForParticipants(null)}
+            onOpenStudentProfile={handleOpenStudentProfile}
+            onNotify={notify}
+          />
+        </React.Suspense>
+      )}
 
       {/* Student Full Profile Modal */}
-      <StudentProfileModal
-        isOpen={!!selectedStudentIdForProfile}
-        studentId={selectedStudentIdForProfile}
-        currentUser={currentUser}
-        students={students}
-        supervisors={supervisors}
-        projects={projects}
-        achievements={achievements}
-        certificates={certificates}
-        languageCertificates={languageCertificates}
-        events={events}
-        onClose={handleCloseStudentProfile}
-        onOpenPdf={(url, name, size, title) =>
-          setPdfModalOptions({
-            isOpen: true,
-            fileUrl: url,
-            fileName: name,
-            fileSize: size,
-            title,
-          })
-        }
-        onVerifyCertificate={certNumber => {
-          handleCloseStudentProfile();
-          setVerifyInitialCertId(certNumber);
-          setVerifyModalOpen(true);
-        }}
-        onNotify={notify}
-      />
+      {selectedStudentIdForProfile && (
+        <React.Suspense fallback={null}>
+          <StudentProfileModal
+            isOpen={!!selectedStudentIdForProfile}
+            studentId={selectedStudentIdForProfile}
+            currentUser={currentUser}
+            students={students}
+            supervisors={supervisors}
+            projects={projects}
+            achievements={achievements}
+            certificates={certificates}
+            languageCertificates={languageCertificates}
+            events={events}
+            onClose={handleCloseStudentProfile}
+            onOpenPdf={(url, name, size, title) =>
+              setPdfModalOptions({
+                isOpen: true,
+                fileUrl: url,
+                fileName: name,
+                fileSize: size,
+                title,
+              })
+            }
+            onVerifyCertificate={certNumber => {
+              handleCloseStudentProfile();
+              setVerifyInitialCertId(certNumber);
+              setVerifyModalOpen(true);
+            }}
+            onNotify={notify}
+          />
+        </React.Suspense>
+      )}
 
       {/* Top 3 Active Students Modal (Admin only) */}
-      <TopStudentsManageModal
-        isOpen={topStudentsModalOpen}
-        onClose={() => setTopStudentsModalOpen(false)}
-        currentUser={currentUser}
-        students={students}
-        supervisors={supervisors}
-        projects={projects}
-        achievements={achievements}
-        onNotify={notify}
-      />
+      {topStudentsModalOpen && (
+        <React.Suspense fallback={null}>
+          <TopStudentsManageModal
+            isOpen={topStudentsModalOpen}
+            onClose={() => setTopStudentsModalOpen(false)}
+            currentUser={currentUser}
+            students={students}
+            supervisors={supervisors}
+            projects={projects}
+            achievements={achievements}
+            onNotify={notify}
+          />
+        </React.Suspense>
+      )}
 
       {/* Public Visitor & Auth Modals */}
       <AuthModal
@@ -700,108 +740,112 @@ export default function App() {
               Tizimdan chiqish
             </button>
           </div>
-        ) : currentUser.role === 'student' ? (
-          /* STUDENT DASHBOARD */
-          <StudentDashboard
-            currentUser={currentUser}
-            studentProfile={currentStudentProfile}
-            supervisors={supervisors}
-            projects={projects}
-            achievements={achievements}
-            certificates={certificates}
-            languageCertificates={languageCertificates}
-            events={events}
-            announcements={announcements}
-            onNotify={notify}
-            onUpdateCurrentUser={handleUpdateCurrentUser}
-            onOpenPdf={(url, name, size, title) =>
-              setPdfModalOptions({
-                isOpen: true,
-                fileUrl: url,
-                fileName: name,
-                fileSize: size,
-                title,
-              })
-            }
-            onConfirmModal={opts =>
-              setConfirmModalOptions({
-                isOpen: true,
-                title: opts.title,
-                message: opts.message,
-                confirmText: opts.confirmText,
-                isDestructive: opts.isDestructive,
-                onConfirm: async () => {
-                  await opts.onConfirm();
-                  setConfirmModalOptions(prev => ({ ...prev, isOpen: false }));
-                },
-              })
-            }
-          />
-        ) : currentUser.role === 'supervisor' ? (
-          /* SUPERVISOR DASHBOARD */
-          <SupervisorDashboard
-            currentUser={currentUser}
-            supervisors={supervisors}
-            students={students}
-            projects={projects}
-            achievements={achievements}
-            certificates={certificates}
-            languageCertificates={languageCertificates}
-            events={events}
-            onNotify={notify}
-            onUpdateCurrentUser={handleUpdateCurrentUser}
-            onOpenStudentProfile={handleOpenStudentProfile}
-            onOpenPdf={(url, name, size, title) =>
-              setPdfModalOptions({
-                isOpen: true,
-                fileUrl: url,
-                fileName: name,
-                fileSize: size,
-                title,
-              })
-            }
-          />
         ) : (
-          /* ADMIN & SUPER ADMIN DASHBOARD */
-          <AdminDashboard
-            currentUser={currentUser}
-            allUsers={allUsers}
-            students={students}
-            supervisors={supervisors}
-            projects={projects}
-            achievements={achievements}
-            certificates={certificates}
-            languageCertificates={languageCertificates}
-            events={events}
-            announcements={announcements}
-            auditLogs={auditLogs}
-            onNotify={notify}
-            onRefreshUsers={() => setAllUsers(offlineStore.get('users'))}
-            onOpenEventParticipants={ev => setSelectedEventForParticipants(ev)}
-            onOpenStudentProfile={handleOpenStudentProfile}
-            onOpenPdf={(url, name, size, title) =>
-              setPdfModalOptions({
-                isOpen: true,
-                fileUrl: url,
-                fileName: name,
-                fileSize: size,
-                title,
-              })
-            }
-            onConfirmModal={opts =>
-              setConfirmModalOptions({
-                isOpen: true,
-                title: opts.title,
-                message: opts.message,
-                confirmText: opts.confirmText,
-                isDestructive: opts.isDestructive,
-                onConfirm: async () => {
-                  await opts.onConfirm();
-                  setConfirmModalOptions(prev => ({ ...prev, isOpen: false }));
-                },
-              })
-            }
-          />
+          <React.Suspense fallback={<DashboardLoadingFallback />}>
+            {currentUser.role === 'student' ? (
+              /* STUDENT DASHBOARD */
+              <StudentDashboard
+                currentUser={currentUser}
+                studentProfile={currentStudentProfile}
+                supervisors={supervisors}
+                projects={projects}
+                achievements={achievements}
+                certificates={certificates}
+                languageCertificates={languageCertificates}
+                events={events}
+                announcements={announcements}
+                onNotify={notify}
+                onUpdateCurrentUser={handleUpdateCurrentUser}
+                onOpenPdf={(url, name, size, title) =>
+                  setPdfModalOptions({
+                    isOpen: true,
+                    fileUrl: url,
+                    fileName: name,
+                    fileSize: size,
+                    title,
+                  })
+                }
+                onConfirmModal={opts =>
+                  setConfirmModalOptions({
+                    isOpen: true,
+                    title: opts.title,
+                    message: opts.message,
+                    confirmText: opts.confirmText,
+                    isDestructive: opts.isDestructive,
+                    onConfirm: async () => {
+                      await opts.onConfirm();
+                      setConfirmModalOptions(prev => ({ ...prev, isOpen: false }));
+                    },
+                  })
+                }
+              />
+            ) : currentUser.role === 'supervisor' ? (
+              /* SUPERVISOR DASHBOARD */
+              <SupervisorDashboard
+                currentUser={currentUser}
+                supervisors={supervisors}
+                students={students}
+                projects={projects}
+                achievements={achievements}
+                certificates={certificates}
+                languageCertificates={languageCertificates}
+                events={events}
+                onNotify={notify}
+                onUpdateCurrentUser={handleUpdateCurrentUser}
+                onOpenStudentProfile={handleOpenStudentProfile}
+                onOpenPdf={(url, name, size, title) =>
+                  setPdfModalOptions({
+                    isOpen: true,
+                    fileUrl: url,
+                    fileName: name,
+                    fileSize: size,
+                    title,
+                  })
+                }
+              />
+            ) : (
+              /* ADMIN & SUPER ADMIN DASHBOARD */
+              <AdminDashboard
+                currentUser={currentUser}
+                allUsers={allUsers}
+                students={students}
+                supervisors={supervisors}
+                projects={projects}
+                achievements={achievements}
+                certificates={certificates}
+                languageCertificates={languageCertificates}
+                events={events}
+                announcements={announcements}
+                auditLogs={auditLogs}
+                onNotify={notify}
+                onRefreshUsers={() => setAllUsers(offlineStore.get('users'))}
+                onOpenEventParticipants={ev => setSelectedEventForParticipants(ev)}
+                onOpenStudentProfile={handleOpenStudentProfile}
+                onOpenPdf={(url, name, size, title) =>
+                  setPdfModalOptions({
+                    isOpen: true,
+                    fileUrl: url,
+                    fileName: name,
+                    fileSize: size,
+                    title,
+                  })
+                }
+                onConfirmModal={opts =>
+                  setConfirmModalOptions({
+                    isOpen: true,
+                    title: opts.title,
+                    message: opts.message,
+                    confirmText: opts.confirmText,
+                    isDestructive: opts.isDestructive,
+                    onConfirm: async () => {
+                      await opts.onConfirm();
+                      setConfirmModalOptions(prev => ({ ...prev, isOpen: false }));
+                    },
+                  })
+                }
+              />
+            )}
+          </React.Suspense>
         )}
       </main>
     </div>
