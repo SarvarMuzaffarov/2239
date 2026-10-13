@@ -292,24 +292,24 @@ export default function App() {
     };
   }, [currentUser]);
 
-  // Safe state updaters that NEVER overwrite populated collections with empty arrays
+  // Safe state updaters that filter out deleted records and properly update state
   const setSafeStudents = (items: StudentProfile[]) => {
-    if (items && items.length > 0) setStudents(items);
+    if (Array.isArray(items)) setStudents(items.filter(s => !s.isDeleted));
   };
   const setSafeSupervisors = (items: SupervisorProfile[]) => {
-    if (items && items.length > 0) setSupervisors(items);
+    if (Array.isArray(items)) setSupervisors(items.filter(s => !s.isDeleted));
   };
   const setSafeProjects = (items: ProjectOrStartup[]) => {
-    if (items && items.length > 0) setProjects(items);
+    if (Array.isArray(items)) setProjects(items.filter(p => !p.isDeleted));
   };
   const setSafeAchievements = (items: Achievement[]) => {
-    if (items && items.length > 0) setAchievements(items);
+    if (Array.isArray(items)) setAchievements(items.filter(a => !a.isDeleted));
   };
   const setSafeCertificates = (items: CertificateItem[]) => {
-    if (items && items.length > 0) setCertificates(items);
+    if (Array.isArray(items)) setCertificates(items.filter(c => !c.isDeleted));
   };
   const setSafeLanguageCertificates = (items: LanguageCertificate[]) => {
-    if (items && items.length > 0) setLanguageCertificates(items);
+    if (Array.isArray(items)) setLanguageCertificates(items.filter(l => !l.isDeleted));
   };
 
   // Subscriptions to live real-time collections
@@ -776,6 +776,7 @@ export default function App() {
             announcements={announcements}
             auditLogs={auditLogs}
             onNotify={notify}
+            onRefreshUsers={() => setAllUsers(offlineStore.get('users'))}
             onOpenEventParticipants={ev => setSelectedEventForParticipants(ev)}
             onOpenStudentProfile={handleOpenStudentProfile}
             onOpenPdf={(url, name, size, title) =>

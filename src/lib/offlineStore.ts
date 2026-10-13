@@ -103,28 +103,54 @@ class OfflineStore {
   private listeners: Map<CollectionKey, Set<Listener>> = new Map();
   private isHydratedFromIdb = false;
 
+  private permanentlyDeletedIds = new Set<string>();
+
   constructor() {
+    this.loadDeletedIds();
     const rawCerts = (realSnapshot.certificates as any[]) || [];
     const sanitizedCerts = sanitizeCertificates(rawCerts);
 
-    // 1. Immediately initialize with complete real snapshot so UI is populated on frame 0
+    // 1. Initialize data filtering out permanently deleted items
     this.data = {
-      users: (realSnapshot.users as any[]) || [],
-      supervisors: (realSnapshot.supervisors as any[]) || [],
-      students: (realSnapshot.students as any[]) || [],
-      languageCertificates: (realSnapshot.languageCertificates as any[]) || [],
-      projects: (realSnapshot.projects as any[]) || [],
-      achievements: (realSnapshot.achievements as any[]) || [],
-      certificates: sanitizedCerts.items,
-      events: (realSnapshot.events as any[]) || [],
-      announcements: (realSnapshot.announcements as any[]) || [],
-      auditLogs: (realSnapshot.auditLogs as any[]) || [],
+      users: ((realSnapshot.users as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      supervisors: ((realSnapshot.supervisors as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      students: ((realSnapshot.students as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      languageCertificates: ((realSnapshot.languageCertificates as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      projects: ((realSnapshot.projects as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      achievements: ((realSnapshot.achievements as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      certificates: sanitizedCerts.items.filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      events: ((realSnapshot.events as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      announcements: ((realSnapshot.announcements as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      auditLogs: ((realSnapshot.auditLogs as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
     };
 
     // 2. Asynchronously hydrate from IndexedDB for any newer locally saved items
     this.hydrateFromIndexedDb().catch(err => {
       console.warn('IDB hydration notice:', err);
     });
+  }
+
+  private loadDeletedIds() {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = localStorage.getItem('offlineStore_permanently_deleted');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          this.permanentlyDeletedIds = new Set(arr);
+        }
+      }
+    } catch {}
+  }
+
+  private saveDeletedIds() {
+    if (typeof window === 'undefined') return;
+    try {
+      localStorage.setItem(
+        'offlineStore_permanently_deleted',
+        JSON.stringify(Array.from(this.permanentlyDeletedIds))
+      );
+    } catch {}
   }
 
   private async hydrateFromIndexedDb() {
@@ -143,25 +169,12 @@ class OfflineStore {
       'auditLogs',
     ];
 
-    let hasUpdates = false;
-
     for (const col of collections) {
       try {
         const storedItems = await idbGetCollection<any>(col);
         if (storedItems && Array.isArray(storedItems) && storedItems.length > 0) {
-          const map = new Map<string, any>();
-          // Base data
-          for (const item of (this.data[col] as any[])) {
-            if (item && item.id) map.set(item.id, item);
-          }
-          // Stored items overlay
-          for (const item of storedItems) {
-            if (item && item.id) {
-              map.set(item.id, { ...(map.get(item.id) || {}), ...item });
-            }
-          }
-
-          let finalColItems = Array.from(map.values()) as any[];
+          // If stored in IndexedDB, use storedItems as authoritative state (excluding permanently deleted items)
+          let finalColItems = storedItems.filter(item => item && item.id && !this.permanentlyDeletedIds.has(item.id));
 
           // Guarantee zero duplicate certificate numbers even when restoring older IDB caches
           if (col === 'certificates') {
@@ -173,7 +186,6 @@ class OfflineStore {
           }
 
           this.data[col] = finalColItems as any;
-          hasUpdates = true;
           this.notify(col);
         } else {
           // If IDB is empty for this collection, seed it with the snapshot
@@ -241,6 +253,11 @@ class OfflineStore {
 
   public saveItem<K extends CollectionKey>(key: K, item: any) {
     if (!item || !item.id) return;
+    // If previously marked as permanently deleted, unmark it upon explicit save/restore
+    if (this.permanentlyDeletedIds.has(item.id)) {
+      this.permanentlyDeletedIds.delete(item.id);
+      this.saveDeletedIds();
+    }
     const list = this.data[key] as any[];
     const idx = list.findIndex(i => i && i.id === item.id);
     if (idx >= 0) {
@@ -255,34 +272,47 @@ class OfflineStore {
   public deleteItem<K extends CollectionKey>(key: K, id: string, soft = true) {
     const list = this.data[key] as any[];
     const idx = list.findIndex(i => i && i.id === id);
-    if (idx >= 0) {
-      if (soft) {
+    if (soft) {
+      if (idx >= 0) {
         list[idx] = {
           ...list[idx],
           isDeleted: true,
           deletedAt: new Date().toISOString(),
         };
-      } else {
+      }
+    } else {
+      // Permanent deletion
+      this.permanentlyDeletedIds.add(id);
+      this.saveDeletedIds();
+      if (idx >= 0) {
         list.splice(idx, 1);
       }
-      this.persistCollection(key);
-      this.notify(key);
     }
+    this.persistCollection(key);
+    this.notify(key);
   }
 
   public syncFromFirestore<K extends CollectionKey>(key: K, firestoreItems: any[]) {
-    if (!firestoreItems || firestoreItems.length === 0) return;
+    if (!firestoreItems || !Array.isArray(firestoreItems)) return;
     const current = this.data[key] as any[];
     const map = new Map<string, any>();
 
-    // Current items first
+    // Current items first (skipping permanently deleted)
     for (const item of current) {
-      if (item && item.id) map.set(item.id, item);
+      if (item && item.id && !this.permanentlyDeletedIds.has(item.id)) {
+        map.set(item.id, item);
+      }
     }
     // Overlay fresh firestore items
     for (const item of firestoreItems) {
-      if (item && item.id) {
-        map.set(item.id, { ...(map.get(item.id) || {}), ...item });
+      if (item && item.id && !this.permanentlyDeletedIds.has(item.id)) {
+        const local = map.get(item.id);
+        // If locally marked soft deleted and remote doesn't have deletion status yet, preserve soft delete
+        if (local?.isDeleted && item.isDeleted === undefined) {
+          map.set(item.id, { ...local, ...item, isDeleted: true });
+        } else {
+          map.set(item.id, { ...(local || {}), ...item });
+        }
       }
     }
 

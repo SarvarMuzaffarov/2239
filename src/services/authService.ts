@@ -165,10 +165,23 @@ export function clearUserSession() {
 
 /**
  * Checks if the system has at least one Super Admin.
- * Super Admin already exists in the university database (+998996782239 Sarvar / +998000000001 Zafar Xakimov).
  */
 export async function checkSystemHasSuperAdmin(): Promise<boolean> {
-  return true;
+  if (offlineStore.hasSuperAdmin()) {
+    return true;
+  }
+  try {
+    const q = query(
+      collection(db, 'users'),
+      where('role', '==', 'superAdmin'),
+      where('isDeleted', '!=', true),
+      limit(1)
+    );
+    const snap = await getDocs(q);
+    return !snap.empty;
+  } catch {
+    return offlineStore.hasSuperAdmin();
+  }
 }
 
 /**
@@ -580,18 +593,33 @@ export async function loginWithPhone(
   }
 
   let valid = false;
-  try {
-    valid = await verifyPassword(password, user.salt, user.passwordHash);
-  } catch {}
-
-  // Fallback check against role standard initial passwords
-  if (!valid) {
+  if (user.passwordHash && user.salt) {
+    try {
+      valid = await verifyPassword(password, user.salt, user.passwordHash);
+    } catch {}
+  } else {
+    // Uninitialized legacy user: check initial role password and immediately hash it upon success
+    let matchesInitial = false;
     if ((user.role === 'superAdmin' || user.role === 'admin') && (password === 'Admin2024!' || password === 'admin123')) {
-      valid = true;
+      matchesInitial = true;
     } else if (user.role === 'supervisor' && (password === 'Rahbar2024!' || password === 'rahbar123')) {
-      valid = true;
+      matchesInitial = true;
     } else if (user.role === 'student' && (password === 'Talaba2024!' || password === 'Magistr2024!' || password === 'talaba123')) {
+      matchesInitial = true;
+    }
+
+    if (matchesInitial) {
       valid = true;
+      try {
+        const newSalt = generateSalt();
+        const newHash = await hashPassword(password, newSalt);
+        user.salt = newSalt;
+        user.passwordHash = newHash;
+        offlineStore.saveItem('users', { id: user.id, salt: newSalt, passwordHash: newHash });
+        await setDoc(doc(db, 'users', user.id), { salt: newSalt, passwordHash: newHash }, { merge: true }).catch(() => {});
+      } catch (hashErr) {
+        console.warn('Initial password auto-hash note:', hashErr);
+      }
     }
   }
 
@@ -1246,6 +1274,21 @@ export async function softDeleteUser(
     throw new Error("O'z hisobingizni o'chira olmaysiz!");
   }
 
+  const targetUser = offlineStore.getById('users', userId);
+  if (targetUser && (targetUser.role === 'superAdmin' || targetUser.role === 'admin')) {
+    if (targetUser.role === 'superAdmin') {
+      if (actor.role !== 'superAdmin') {
+        throw new Error("Super Admin hisobini faqat boshqa Super Admin o'chira oladi!");
+      }
+      const remainingSuperAdmins = offlineStore
+        .get('users')
+        .filter(u => u && u.role === 'superAdmin' && !u.isDeleted && u.id !== userId);
+      if (remainingSuperAdmins.length === 0) {
+        throw new Error("Tizimda kamida bitta faol Super Admin qolishi shart!");
+      }
+    }
+  }
+
   const actorName = actor.fullName || (actor as any).name || actor.id || 'Admin';
 
   // 1. Immediately update offlineStore memory and IndexedDB (synchronous reactive UI)
@@ -1278,7 +1321,7 @@ export async function softDeleteUser(
       "Admin/Foydalanuvchi o'chirildi (Soft delete)",
       'users',
       userId,
-      `Foydalanuvchi chiqindilar qutisiga o'tkazildi.`
+      `Foydalanuvchi (${targetUser?.fullName || userId}) chiqindilar qutisiga o'tkazildi.`
     );
   } catch (auditErr) {
     console.warn("Audit log note:", auditErr);
@@ -1328,7 +1371,7 @@ export async function restoreUser(
       "Foydalanuvchi qayta tiklandi",
       'users',
       userId,
-      `Foydalanuvchi chiqindilar qutisidan tiklandi.`
+      `Foydalanuvchi (${existingUser?.fullName || userId}) chiqindilar qutisidan tiklandi.`
     );
   } catch (auditErr) {
     console.warn("Audit log note:", auditErr);
@@ -1344,6 +1387,21 @@ export async function permanentDeleteUser(
   }
   if (userId === actor.id) {
     throw new Error("O'z hisobingizni o'chira olmaysiz!");
+  }
+
+  const targetUser = offlineStore.getById('users', userId);
+  if (targetUser && (targetUser.role === 'superAdmin' || targetUser.role === 'admin')) {
+    if (targetUser.role === 'superAdmin') {
+      if (actor.role !== 'superAdmin') {
+        throw new Error("Super Admin hisobini faqat boshqa Super Admin butunlay o'chira oladi!");
+      }
+      const remainingSuperAdmins = offlineStore
+        .get('users')
+        .filter(u => u && u.role === 'superAdmin' && !u.isDeleted && u.id !== userId);
+      if (remainingSuperAdmins.length === 0) {
+        throw new Error("Tizimda kamida bitta faol Super Admin qolishi shart!");
+      }
+    }
   }
 
   // 1. Immediately remove from offlineStore
@@ -1365,7 +1423,7 @@ export async function permanentDeleteUser(
       "Foydalanuvchi butunlay o'chirildi (Permanent delete)",
       'users',
       userId,
-      `Foydalanuvchi hisobi ma'lumotlar bazasidan butunlay tozalandi.`
+      `Foydalanuvchi (${targetUser?.fullName || userId}) hisobi ma'lumotlar bazasidan butunlay tozalandi.`
     );
   } catch (auditErr) {
     console.warn("Audit log note:", auditErr);

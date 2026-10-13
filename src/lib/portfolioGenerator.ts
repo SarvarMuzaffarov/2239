@@ -77,6 +77,56 @@ async function getBase64ImageFromUrl(url: string): Promise<string | null> {
 }
 
 /**
+ * Cleans and sanitizes strings for jsPDF WinAnsi encoding.
+ * Automatically converts typographic apostrophes (o‘, g‘), Cyrillic letters, dashes, and smart quotes.
+ */
+export function sanitizePdfText(text: string | null | undefined): string {
+  if (!text) return '';
+  return String(text)
+    .replace(/[\u2018\u2019\u02BB\u02BC\u0060\u00B4\u02CA\u02CB]/g, "'")
+    .replace(/[\u201C\u201D\u00AB\u00BB]/g, '"')
+    .replace(/[\u2012\u2013\u2014\u2015]/g, '-')
+    .replace(/[\u2022\u2023\u25E6\u2043\u2219]/g, '-')
+    .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    .replace(/ў/g, "o'").replace(/Ў/g, "O'")
+    .replace(/ғ/g, "g'").replace(/Ғ/g, "G'")
+    .replace(/қ/g, "q").replace(/Қ/g, "Q")
+    .replace(/ҳ/g, "h").replace(/Ҳ/g, "H")
+    .replace(/ш/g, "sh").replace(/Ш/g, "Sh")
+    .replace(/ч/g, "ch").replace(/Ч/g, "Ch")
+    .replace(/ю/g, "yu").replace(/Ю/g, "Yu")
+    .replace(/я/g, "ya").replace(/Я/g, "Ya")
+    .replace(/ё/g, "yo").replace(/Ё/g, "Yo")
+    .replace(/е/g, "ye").replace(/Е/g, "Ye")
+    .replace(/а/g, "a").replace(/А/g, "A")
+    .replace(/б/g, "b").replace(/Б/g, "B")
+    .replace(/в/g, "v").replace(/В/g, "V")
+    .replace(/г/g, "g").replace(/Г/g, "G")
+    .replace(/д/g, "d").replace(/Д/g, "D")
+    .replace(/ж/g, "j").replace(/Ж/g, "J")
+    .replace(/з/g, "z").replace(/З/g, "Z")
+    .replace(/и/g, "i").replace(/И/g, "I")
+    .replace(/й/g, "y").replace(/Й/g, "Y")
+    .replace(/к/g, "k").replace(/К/g, "K")
+    .replace(/л/g, "l").replace(/Л/g, "L")
+    .replace(/м/g, "m").replace(/М/g, "M")
+    .replace(/н/g, "n").replace(/Н/g, "N")
+    .replace(/о/g, "o").replace(/О/g, "O")
+    .replace(/п/g, "p").replace(/П/g, "P")
+    .replace(/р/g, "r").replace(/Р/g, "R")
+    .replace(/с/g, "s").replace(/С/g, "S")
+    .replace(/т/g, "t").replace(/Т/g, "T")
+    .replace(/у/g, "u").replace(/У/g, "U")
+    .replace(/ф/g, "f").replace(/Ф/g, "F")
+    .replace(/х/g, "x").replace(/Х/g, "X")
+    .replace(/ц/g, "ts").replace(/Ц/g, "Ts")
+    .replace(/ь/g, "").replace(/Ь/g, "")
+    .replace(/ъ/g, "'").replace(/Ъ/g, "'")
+    .replace(/э/g, "e").replace(/Э/g, "E")
+    .trim();
+}
+
+/**
  * Master Student Portfolio PDF Generator
  * Combines Academic Rigor (Vazirlik standarti), Modern Silicon Valley KPI aesthetics,
  * and Europass International CV structure into an elite document.
@@ -99,6 +149,17 @@ export async function generateStudentPortfolioPdf(data: PortfolioData): Promise<
     unit: 'mm',
     format: 'a4',
   });
+
+  // Patch doc.text to automatically sanitize text for standard PDF fonts
+  const originalText = doc.text.bind(doc);
+  doc.text = function (text: any, x: any, y: any, textOptions?: any) {
+    if (typeof text === 'string') {
+      text = sanitizePdfText(text);
+    } else if (Array.isArray(text)) {
+      text = text.map(t => (typeof t === 'string' ? sanitizePdfText(t) : t));
+    }
+    return originalText(text, x, y, textOptions);
+  } as any;
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

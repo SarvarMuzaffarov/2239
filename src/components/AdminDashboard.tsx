@@ -158,6 +158,7 @@ interface Props {
   }) => void;
   onOpenEventParticipants?: (event: EventItem) => void;
   onOpenStudentProfile?: (studentId: string) => void;
+  onRefreshUsers?: () => void;
 }
 
 type TabType =
@@ -191,6 +192,7 @@ export const AdminDashboard: React.FC<Props> = ({
   onConfirmModal,
   onOpenEventParticipants,
   onOpenStudentProfile,
+  onRefreshUsers,
 }) => {
   const isSuperAdmin = currentUser.role === 'superAdmin';
 
@@ -4965,7 +4967,9 @@ export const AdminDashboard: React.FC<Props> = ({
         <AdminManagementView
           actor={currentUser}
           admins={allUsers.filter(u => (u.role === 'admin' || u.role === 'superAdmin') && !u.isDeleted)}
-          onRefresh={() => {}}
+          onRefresh={() => {
+            onRefreshUsers?.();
+          }}
         />
       )}
 
