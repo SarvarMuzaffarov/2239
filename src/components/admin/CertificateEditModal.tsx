@@ -4,7 +4,7 @@ import { updateCertificateDetails } from '../../services/firestoreService';
 import type { CertificateItem, UserAccount } from '../../types';
 import { CertificateDesignSelector } from '../CertificateDesignSelector';
 import type { CertificateDesignId, BackgroundPatternId } from '../../lib/certificateStyles';
-import { generateNextCertificateNumber } from '../../lib/certificateGenerator';
+import { generateNextCertificateNumber } from '../../lib/certificateNumberHelper';
 import { offlineStore } from '../../lib/offlineStore';
 
 interface Props {

@@ -152,24 +152,91 @@ export default function App() {
 
   const handleOpenStudentProfile = (studentId: string) => {
     setSelectedStudentIdForProfile(studentId);
-    window.location.hash = `#student/${studentId}`;
+    window.location.hash = `#student/${encodeURIComponent(studentId)}`;
   };
 
   const handleCloseStudentProfile = () => {
     setSelectedStudentIdForProfile(null);
-    if (window.location.hash.startsWith('#student/') || window.location.hash.startsWith('#students/')) {
-      window.location.hash = '';
+    if (
+      window.location.hash.startsWith('#student/') ||
+      window.location.hash.startsWith('#students/') ||
+      window.location.hash.startsWith('#talaba/')
+    ) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
     }
   };
 
-  // Check URL path, query params, and hash for verify links (e.g. /verify/CERT-2026-0001, ?verify=CERT-2026-0001, or #verify/CERT-2026-0001)
+  const handleOpenEvent = (event: EventItem) => {
+    setSelectedPublicEvent(event);
+    window.location.hash = `#event/${encodeURIComponent(event.id)}`;
+  };
+
+  const handleCloseEvent = () => {
+    setSelectedPublicEvent(null);
+    if (
+      window.location.hash.startsWith('#event/') ||
+      window.location.hash.startsWith('#events/') ||
+      window.location.hash.startsWith('#tadbir/')
+    ) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  };
+
+  const handleOpenAnnouncement = (ann: Announcement) => {
+    setSelectedPublicAnnouncement(ann);
+    window.location.hash = `#announcement/${encodeURIComponent(ann.id)}`;
+  };
+
+  const handleCloseAnnouncement = () => {
+    setSelectedPublicAnnouncement(null);
+    if (
+      window.location.hash.startsWith('#announcement/') ||
+      window.location.hash.startsWith('#announcements/') ||
+      window.location.hash.startsWith('#elon/')
+    ) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  };
+
+  const handleOpenProject = (proj: ProjectOrStartup) => {
+    setSelectedPublicProject(proj);
+    window.location.hash = `#project/${encodeURIComponent(proj.id)}`;
+  };
+
+  const handleCloseProject = () => {
+    setSelectedPublicProject(null);
+    if (
+      window.location.hash.startsWith('#project/') ||
+      window.location.hash.startsWith('#projects/') ||
+      window.location.hash.startsWith('#loyiha/')
+    ) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  };
+
+  const handleSelectDirection = (dir: string) => {
+    setSelectedDirection(dir);
+    setCurrentView('public');
+    window.location.hash = `#direction/${encodeURIComponent(dir)}`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCloseDirection = () => {
+    setSelectedDirection(null);
+    if (window.location.hash.startsWith('#direction/') || window.location.hash.startsWith('#yonalish/')) {
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  };
+
+  // Comprehensive Deep-linking & URL Routing Engine (Variant 1)
   useEffect(() => {
     const handleRouteCheck = () => {
-      const hash = window.location.hash;
-      const pathname = window.location.pathname;
+      const hash = window.location.hash || '';
+      const pathname = window.location.pathname || '';
       const searchParams = new URLSearchParams(window.location.search);
-      const verifyQueryParam = searchParams.get('verify') || searchParams.get('cert') || searchParams.get('id');
 
+      // 1. Verification links
+      const verifyQueryParam = searchParams.get('verify') || searchParams.get('cert') || searchParams.get('id');
       if (verifyQueryParam) {
         const certCode = decodeURIComponent(verifyQueryParam.trim());
         if (certCode) {
@@ -178,7 +245,6 @@ export default function App() {
           return;
         }
       }
-
       if (hash.startsWith('#verify/')) {
         const certCode = decodeURIComponent(hash.replace('#verify/', '').trim());
         if (certCode) {
@@ -193,34 +259,176 @@ export default function App() {
           setVerifyModalOpen(true);
           return;
         }
+      }
+
+      // 2. Event direct links: #event/id, /event/id, ?event=id, #tadbir/id
+      const eventQuery = searchParams.get('event') || searchParams.get('tadbir');
+      let targetEventId: string | null = null;
+      if (eventQuery) {
+        targetEventId = decodeURIComponent(eventQuery.trim());
+      } else if (hash.startsWith('#event/')) {
+        targetEventId = decodeURIComponent(hash.replace('#event/', '').trim());
+      } else if (hash.startsWith('#events/')) {
+        targetEventId = decodeURIComponent(hash.replace('#events/', '').trim());
+      } else if (hash.startsWith('#tadbir/')) {
+        targetEventId = decodeURIComponent(hash.replace('#tadbir/', '').trim());
+      } else if (pathname.startsWith('/event/')) {
+        targetEventId = decodeURIComponent(pathname.replace('/event/', '').trim());
+      }
+
+      if (targetEventId) {
+        const found = events.find(e => e.id === targetEventId);
+        if (found) {
+          setSelectedPublicEvent(found);
+          return;
+        }
+      }
+
+      // 3. Announcement direct links: #announcement/id, /announcement/id, ?announcement=id, #elon/id
+      const annQuery = searchParams.get('announcement') || searchParams.get('elon');
+      let targetAnnId: string | null = null;
+      if (annQuery) {
+        targetAnnId = decodeURIComponent(annQuery.trim());
+      } else if (hash.startsWith('#announcement/')) {
+        targetAnnId = decodeURIComponent(hash.replace('#announcement/', '').trim());
+      } else if (hash.startsWith('#announcements/')) {
+        targetAnnId = decodeURIComponent(hash.replace('#announcements/', '').trim());
+      } else if (hash.startsWith('#elon/')) {
+        targetAnnId = decodeURIComponent(hash.replace('#elon/', '').trim());
+      } else if (pathname.startsWith('/announcement/')) {
+        targetAnnId = decodeURIComponent(pathname.replace('/announcement/', '').trim());
+      }
+
+      if (targetAnnId) {
+        const found = announcements.find(a => a.id === targetAnnId);
+        if (found) {
+          setSelectedPublicAnnouncement(found);
+          return;
+        }
+      }
+
+      // 4. Project direct links: #project/id, /project/id, ?project=id, #loyiha/id
+      const projQuery = searchParams.get('project') || searchParams.get('loyiha');
+      let targetProjId: string | null = null;
+      if (projQuery) {
+        targetProjId = decodeURIComponent(projQuery.trim());
+      } else if (hash.startsWith('#project/')) {
+        targetProjId = decodeURIComponent(hash.replace('#project/', '').trim());
+      } else if (hash.startsWith('#projects/')) {
+        targetProjId = decodeURIComponent(hash.replace('#projects/', '').trim());
+      } else if (hash.startsWith('#loyiha/')) {
+        targetProjId = decodeURIComponent(hash.replace('#loyiha/', '').trim());
+      } else if (pathname.startsWith('/project/')) {
+        targetProjId = decodeURIComponent(pathname.replace('/project/', '').trim());
+      }
+
+      if (targetProjId) {
+        const found = projects.find(p => p.id === targetProjId);
+        if (found) {
+          setSelectedPublicProject(found);
+          return;
+        }
+      }
+
+      // 5. Student profile links: #student/id, /student/id, ?student=id, #talaba/id
+      const studentQuery = searchParams.get('student') || searchParams.get('talaba');
+      let targetStudentId: string | null = null;
+      if (studentQuery) {
+        targetStudentId = decodeURIComponent(studentQuery.trim());
+      } else if (hash.startsWith('#student/')) {
+        targetStudentId = decodeURIComponent(hash.replace('#student/', '').trim());
+      } else if (hash.startsWith('#students/')) {
+        targetStudentId = decodeURIComponent(hash.replace('#students/', '').trim());
+      } else if (hash.startsWith('#talaba/')) {
+        targetStudentId = decodeURIComponent(hash.replace('#talaba/', '').trim());
+      } else if (pathname.startsWith('/student/')) {
+        targetStudentId = decodeURIComponent(pathname.replace('/student/', '').trim());
+      }
+
+      if (targetStudentId) {
+        setSelectedStudentIdForProfile(targetStudentId);
+        return;
+      }
+
+      // 6. Direction links: #direction/name, /direction/name, ?direction=name
+      const dirQuery = searchParams.get('direction') || searchParams.get('yonalish');
+      let targetDir: string | null = null;
+      if (dirQuery) {
+        targetDir = decodeURIComponent(dirQuery.trim());
       } else if (hash.startsWith('#direction/')) {
-        const dir = decodeURIComponent(hash.replace('#direction/', ''));
-        setSelectedDirection(dir);
+        targetDir = decodeURIComponent(hash.replace('#direction/', '').trim());
+      } else if (hash.startsWith('#yonalish/')) {
+        targetDir = decodeURIComponent(hash.replace('#yonalish/', '').trim());
+      } else if (pathname.startsWith('/direction/')) {
+        targetDir = decodeURIComponent(pathname.replace('/direction/', '').trim());
+      }
+
+      if (targetDir) {
+        setSelectedDirection(targetDir);
         setCurrentView('public');
-      } else if (hash === '#login') {
+        return;
+      }
+
+      // 7. Auth and Dashboard anchors
+      if (hash === '#login') {
         setAuthInitialTab('login');
         setAuthModalOpen(true);
-      } else if (hash === '#register') {
+        return;
+      }
+      if (hash === '#register') {
         setAuthInitialTab('register');
         setAuthModalOpen(true);
-      } else if (hash === '#dashboard') {
+        return;
+      }
+      if (hash === '#dashboard') {
         setCurrentView('dashboard');
-      } else if (hash.startsWith('#student/')) {
-        const stId = hash.replace('#student/', '');
-        if (stId) setSelectedStudentIdForProfile(stId);
-      } else if (hash.startsWith('#students/')) {
-        const stId = hash.replace('#students/', '');
-        if (stId) setSelectedStudentIdForProfile(stId);
+        return;
+      }
+
+      // 8. Public Section Anchors
+      const sectionMatch = hash.replace('#', '');
+      const validSections: Record<string, string> = {
+        'tadbirlar': 'tadbirlar',
+        'events': 'tadbirlar',
+        'elonlar': 'elonlar',
+        'announcements': 'elonlar',
+        'loyihalar': 'loyihalar',
+        'projects': 'loyihalar',
+        'yonalishlar': 'yonalishlar',
+        'directions': 'yonalishlar',
+        'yutuqlar': 'yutuqlar',
+        'achievements': 'yutuqlar',
+        'faol-talabalar': 'faol-talabalar',
+        'top-students': 'faol-talabalar',
+        'statistika': 'statistika',
+        'stats': 'statistika',
+        'haqida': 'haqida',
+        'about': 'haqida',
+      };
+
+      if (sectionMatch && validSections[sectionMatch]) {
+        if (currentView !== 'public') {
+          setCurrentView('public');
+        }
+        setSelectedDirection(null);
+        setTimeout(() => {
+          const el = document.getElementById(validSections[sectionMatch]);
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth' });
+          }
+        }, 100);
       }
     };
+
     handleRouteCheck();
     window.addEventListener('hashchange', handleRouteCheck);
     window.addEventListener('popstate', handleRouteCheck);
+
     return () => {
       window.removeEventListener('hashchange', handleRouteCheck);
       window.removeEventListener('popstate', handleRouteCheck);
     };
-  }, []);
+  }, [events, announcements, projects]);
 
   // Initial session & superAdmin check
   useEffect(() => {
@@ -586,9 +794,9 @@ export default function App() {
         event={selectedPublicEvent}
         currentUser={currentUser}
         studentProfile={currentStudentProfile}
-        onClose={() => setSelectedPublicEvent(null)}
+        onClose={handleCloseEvent}
         onOpenLogin={() => {
-          setSelectedPublicEvent(null);
+          handleCloseEvent();
           setAuthInitialTab('login');
           setAuthModalOpen(true);
         }}
@@ -598,7 +806,8 @@ export default function App() {
       <PublicProjectModal
         isOpen={!!selectedPublicProject}
         project={selectedPublicProject}
-        onClose={() => setSelectedPublicProject(null)}
+        onClose={handleCloseProject}
+        onNotify={notify}
         onOpenPdf={(url, name, size, title) =>
           setPdfModalOptions({
             isOpen: true,
@@ -613,7 +822,8 @@ export default function App() {
       <PublicAnnouncementModal
         isOpen={!!selectedPublicAnnouncement}
         announcement={selectedPublicAnnouncement}
-        onClose={() => setSelectedPublicAnnouncement(null)}
+        onClose={handleCloseAnnouncement}
+        onNotify={notify}
       />
 
       {/* Top Navbar */}
@@ -675,13 +885,8 @@ export default function App() {
                 achievements={achievements}
                 certificates={certificates}
                 events={events}
-                onBack={() => {
-                  setSelectedDirection(null);
-                  if (window.location.hash.startsWith('#direction/')) {
-                    window.location.hash = '';
-                  }
-                }}
-                onOpenProjectDetail={proj => setSelectedPublicProject(proj)}
+                onBack={handleCloseDirection}
+                onOpenProjectDetail={handleOpenProject}
                 onOpenVerifyModal={certId => {
                   if (certId) setVerifyInitialCertId(certId);
                   setVerifyModalOpen(true);
@@ -710,16 +915,13 @@ export default function App() {
                   if (certId) setVerifyInitialCertId(certId);
                   setVerifyModalOpen(true);
                 }}
-                onSelectDirection={dir => {
-                  setSelectedDirection(dir);
-                  window.location.hash = `#direction/${encodeURIComponent(dir)}`;
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                onOpenEventDetail={ev => setSelectedPublicEvent(ev)}
-                onOpenProjectDetail={proj => setSelectedPublicProject(proj)}
-                onOpenAnnouncementDetail={ann => setSelectedPublicAnnouncement(ann)}
+                onSelectDirection={handleSelectDirection}
+                onOpenEventDetail={handleOpenEvent}
+                onOpenProjectDetail={handleOpenProject}
+                onOpenAnnouncementDetail={handleOpenAnnouncement}
                 onOpenStudentProfile={handleOpenStudentProfile}
                 onOpenManageTopStudents={() => setTopStudentsModalOpen(true)}
+                onNotify={notify}
               />
             )}
           </div>

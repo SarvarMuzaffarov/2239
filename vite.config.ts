@@ -39,6 +39,9 @@ export default defineConfig(() => {
                 return 'vendor-xlsx';
               }
             }
+            if (id.includes('realFirestoreSnapshot.json')) {
+              return 'seed-database-data';
+            }
           },
         },
       },

@@ -45,7 +45,7 @@ import {
 import { isValidDirection, canonicalizeDirection, getDirectionFilterVariants } from '../constants/directions';
 import { matchesStudentSearch } from '../lib/searchUtils';
 import { offlineStore } from '../lib/offlineStore';
-import { generateNextCertificateNumber } from '../lib/certificateGenerator';
+import { generateNextCertificateNumber } from '../lib/certificateNumberHelper';
 
 // Helper for timeout protection on async calls
 async function withFirestoreTimeout<T>(
@@ -2790,6 +2790,16 @@ export async function emptyTrashPermanently(
     }
   }
 
+  // Immediately remove from offlineStore so local UI and IndexedDB update instantly
+  try {
+    offlineStore.deleteItemsBatch(
+      safeItems.map(i => ({ collectionName: i.collectionName as any, id: i.id })),
+      false
+    );
+  } catch (storeErr) {
+    console.warn('offlineStore deleteItemsBatch error:', storeErr);
+  }
+
   let deletedCount = 0;
   const CHUNK_SIZE = 300; // Well below 500 limit for Firestore writeBatch
 
@@ -2802,11 +2812,15 @@ export async function emptyTrashPermanently(
       batch.delete(docRef);
     }
 
-    await withFirestoreTimeout(
-      batch.commit(),
-      25000,
-      "Chiqindilarni butunlay tozalashda xatolik yuz berdi."
-    );
+    try {
+      await withFirestoreTimeout(
+        batch.commit(),
+        10000,
+        "Chiqindilarni butunlay tozalashda xatolik yuz berdi."
+      );
+    } catch (batchErr) {
+      console.warn("Firestore batch delete warning (offline or network):", batchErr);
+    }
     deletedCount += chunk.length;
   }
 
@@ -2833,6 +2847,20 @@ export async function restoreDocumentsBatch(
   let restoredCount = 0;
   const CHUNK_SIZE = 300;
 
+  // Immediately update local offlineStore for instant UI refresh
+  for (const item of items) {
+    const existing = offlineStore.getById(item.collectionName as any, item.id);
+    if (existing) {
+      offlineStore.saveItem(item.collectionName as any, {
+        ...existing,
+        isDeleted: false,
+        deletedAt: null,
+        deletedBy: null,
+        updatedAt: now,
+      });
+    }
+  }
+
   // Gather any linked user account IDs for students or supervisors to restore them together
   const linkedUserIdsToRestore = new Set<string>();
   for (const item of items) {
@@ -2843,6 +2871,17 @@ export async function restoreDocumentsBatch(
           const data = snap.data();
           if (data?.userId) {
             linkedUserIdsToRestore.add(data.userId);
+            const existingU = offlineStore.getById('users', data.userId);
+            if (existingU) {
+              offlineStore.saveItem('users', {
+                ...existingU,
+                isDeleted: false,
+                deletedAt: null,
+                deletedBy: null,
+                isActive: true,
+                updatedAt: now,
+              });
+            }
           }
         }
       } catch (err) {
@@ -2876,11 +2915,15 @@ export async function restoreDocumentsBatch(
       });
     }
 
-    await withFirestoreTimeout(
-      batch.commit(),
-      25000,
-      "Hujjatlarni ommaviy qayta tiklashda xatolik yuz berdi."
-    );
+    try {
+      await withFirestoreTimeout(
+        batch.commit(),
+        10000,
+        "Hujjatlarni ommaviy qayta tiklashda xatolik yuz berdi."
+      );
+    } catch (batchErr) {
+      console.warn("Firestore batch restore warning (offline or network):", batchErr);
+    }
     restoredCount += chunk.length;
   }
 

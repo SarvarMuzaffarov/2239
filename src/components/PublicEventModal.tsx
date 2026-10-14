@@ -8,10 +8,15 @@ import {
   CheckCircle2,
   AlertCircle,
   FileText,
-  UserCheck
+  UserCheck,
+  Send,
+  Copy,
+  Check,
+  Share2
 } from 'lucide-react';
 import type { EventItem, StudentProfile, UserAccount } from '../types';
 import { registerStudentForEvent, unregisterStudentFromEvent } from '../services/firestoreService';
+import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
 
 interface Props {
   isOpen: boolean;
@@ -33,8 +38,38 @@ export const PublicEventModal: React.FC<Props> = ({
   onNotify,
 }) => {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   if (!isOpen || !event) return null;
+
+  const shareUrl = getShareUrl('event', event.id);
+
+  const handleCopyLink = async () => {
+    const success = await copyShareLink(shareUrl);
+    if (success) {
+      setCopiedLink(true);
+      onNotify('success', 'Tadbirning to‘g‘ridan-to‘g‘ri havolasi nusxalandi!');
+      setTimeout(() => setCopiedLink(false), 2500);
+    } else {
+      onNotify('error', 'Havolani nusxalashda xatolik yuz berdi.');
+    }
+  };
+
+  const handleShareTelegram = () => {
+    shareToTelegram({
+      title: event.title,
+      url: shareUrl,
+      category: 'Tadbir / Tanlov',
+      details: [
+        `📅 Sana: ${event.date}`,
+        `⏰ Boshlanish vaqti: ${event.time || 'Belgilanmagan'}`,
+        `📍 Manzil: ${event.location || 'TKTI Yangiyer filiali'}`,
+        event.deadline ? `⏳ Oxirgi muddat: ${event.deadline}` : '',
+        `👥 Holat: ${event.status}`,
+      ],
+      extraText: event.description ? event.description.slice(0, 180) + '...' : '',
+    });
+  };
 
   const isStudent = currentUser?.role === 'student';
   const isRegistered = Boolean(
@@ -151,6 +186,51 @@ export const PublicEventModal: React.FC<Props> = ({
             <span className="font-bold text-slate-900">
               {event.participantIds?.length || 0} nafar
             </span>
+          </div>
+
+          {/* To'g'ridan-to'g'ri havola va Telegramda ulashish */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50/70 to-blue-50/70 border border-sky-100/90 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900">
+                <Share2 className="w-3.5 h-3.5 text-sky-700" />
+                <span>Tadbir havolasini ulashish</span>
+              </div>
+              <span className="text-[11px] text-slate-500 font-medium">Telegram kanal yoki guruhlar uchun</span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div
+                className="flex-1 px-3 py-2 bg-white rounded-xl border border-slate-200 text-[11px] font-mono text-slate-600 truncate select-all"
+                title={shareUrl}
+              >
+                {shareUrl}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                    copiedLink
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
+                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                  title="Havoladan nusxa olish"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
+                  <span>{copiedLink ? 'Nusxalandi!' : 'Nusxalash'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareTelegram}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-500 hover:bg-sky-600 text-white flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-[0.98]"
+                  title="Telegramga yuborish"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Telegramda ulashish</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 

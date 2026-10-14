@@ -14,9 +14,14 @@ import {
   BookOpen,
   Eye,
   Building,
-  UserCheck
+  UserCheck,
+  Send,
+  Copy,
+  Check,
+  Share2
 } from 'lucide-react';
 import { canonicalizeDirection } from '../constants/directions';
+import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
 import type {
   StudentProfile,
   SupervisorProfile,
@@ -53,6 +58,31 @@ export const DirectionDetailView: React.FC<Props> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'students' | 'achievements'>('overview');
   const [searchStudent, setSearchStudent] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const shareUrl = getShareUrl('direction', directionName);
+
+  const handleCopyLink = async () => {
+    const success = await copyShareLink(shareUrl);
+    if (success) {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    }
+  };
+
+  const handleShareTelegram = () => {
+    shareToTelegram({
+      title: `${directionName} — Ta'lim yo‘nalishi`,
+      url: shareUrl,
+      category: 'Bakalavriat yo‘nalishi',
+      details: [
+        `🏛 Toshkent kimyo-texnologiya instituti Yangiyer filiali`,
+        `👨‍🎓 Iqtidorli talabalar: ${directionStudents.length} nafar`,
+        `🔬 Tasdiqlangan loyihalar: ${directionProjects.length} ta`,
+      ],
+      extraText: 'Ushbu yo‘nalishdagi talabalar reyestri va ilmiy tadqiqotlari bilan tanishing.',
+    });
+  };
 
   // Direction students (Public-safe: NO phone, NO password, NO private notes)
   const directionStudents = useMemo(() => {
@@ -129,6 +159,32 @@ export const DirectionDetailView: React.FC<Props> = ({
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
               Toshkent kimyo-texnologiya instituti Yangiyer filialining rasmiy ta'lim yo‘nalishi bo‘yicha iqtidorli talabalar reyestri, ilmiy loyihalar va erishilgan natijalar.
             </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                copiedLink
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
+                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 shadow-2xs'
+              }`}
+              title="Yo‘nalish sahifasi havolasini nusxalash"
+            >
+              {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
+              <span>{copiedLink ? 'Nusxalandi!' : 'Havolani nusxalash'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleShareTelegram}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-sky-500 hover:bg-sky-600 text-white shadow-xs transition-all cursor-pointer active:scale-98"
+              title="Telegramda ulashish"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Telegramda ulashish</span>
+            </button>
           </div>
         </div>
 

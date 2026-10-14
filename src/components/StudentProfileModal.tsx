@@ -23,7 +23,11 @@ import {
   Languages,
   Eye,
   Download,
+  Share2,
+  Send,
+  Copy,
 } from 'lucide-react';
+import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
 import type {
   UserAccount,
   StudentProfile,
@@ -84,6 +88,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [previewCert, setPreviewCert] = useState<CertificateItem | null>(null);
   const [isPortfolioExportOpen, setIsPortfolioExportOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Quick edit mode for admins
   const [isEditingBasic, setIsEditingBasic] = useState(false);
@@ -96,6 +101,35 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
   const mySupervisor = student?.supervisorId
     ? supervisors.find(sup => sup.id === student.supervisorId)
     : null;
+
+  const studentShareUrl = student ? getShareUrl('student', student.id) : '';
+
+  const handleCopyProfileLink = async () => {
+    if (!studentShareUrl) return;
+    const ok = await copyShareLink(studentShareUrl);
+    if (ok) {
+      setCopiedLink(true);
+      onNotify('success', 'Talaba portfoliosining to‘g‘ridan-to‘g‘ri havolasi nusxalandi!');
+      setTimeout(() => setCopiedLink(false), 2500);
+    } else {
+      onNotify('error', 'Havolani nusxalashda xatolik yuz berdi.');
+    }
+  };
+
+  const handleShareProfileTelegram = () => {
+    if (!student) return;
+    shareToTelegram({
+      title: `${student.fullName} — Iqtidorli talaba portfoliosi`,
+      url: studentShareUrl,
+      category: 'Iqtidorli talaba',
+      details: [
+        `🎓 Yo‘nalish: ${student.facultyOrField || 'TKTI Yangiyer filiali'}`,
+        `📚 Bosqich: ${student.course}-kurs, ${student.group}-guruh`,
+        mySupervisor ? `👨‍🏫 Ilmiy rahbar: ${mySupervisor.fullName}` : '',
+      ],
+      extraText: 'Ushbu havola orqali talabaning barcha ilmiy loyihalari, startaplari, yutuqlari va sertifikatlari bilan tanishishingiz mumkin.',
+    });
+  };
 
   useEffect(() => {
     if (student) {
@@ -310,7 +344,7 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   </span>
                 </div>
 
-                <div className="flex items-center gap-3 mt-3">
+                <div className="flex items-center gap-2.5 mt-3 flex-wrap">
                   <button
                     type="button"
                     id="export-student-portfolio-top-btn"
@@ -320,6 +354,30 @@ export const StudentProfileModal: React.FC<StudentProfileModalProps> = ({
                   >
                     <Download className="w-3.5 h-3.5 text-slate-950" />
                     <span>Portfolioni yuklab olish (PDF)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyProfileLink}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold backdrop-blur-md transition-all cursor-pointer ${
+                      copiedLink
+                        ? 'bg-emerald-500 text-white font-bold'
+                        : 'bg-white/15 hover:bg-white/25 text-white border border-white/20'
+                    }`}
+                    title="Talaba portfoliosi havolasidan nusxa olish"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copiedLink ? 'Nusxalandi!' : 'Havolani nusxalash'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleShareProfileTelegram}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer active:scale-98"
+                    title="Telegramda ulashish"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Telegramda ulashish</span>
                   </button>
                 </div>
               </div>

@@ -4982,11 +4982,12 @@ export const AdminDashboard: React.FC<Props> = ({
           projects={projects}
           achievements={achievements}
           certificates={certificates}
+          languageCertificates={languageCertificates}
           events={events}
           announcements={announcements}
           admins={allUsers.filter(u => u.role === 'admin' || u.role === 'superAdmin')}
           onRefresh={() => {
-            fetchStudentsForPage();
+            onRefreshUsers?.();
           }}
         />
       )}

@@ -34,6 +34,7 @@ import type {
   ProjectOrStartup,
   Achievement,
   CertificateItem,
+  LanguageCertificate,
   EventItem,
   Announcement,
 } from '../../types';
@@ -45,6 +46,7 @@ interface Props {
   projects: ProjectOrStartup[];
   achievements: Achievement[];
   certificates: CertificateItem[];
+  languageCertificates?: LanguageCertificate[];
   events: EventItem[];
   announcements: Announcement[];
   admins: UserAccount[];
@@ -70,6 +72,7 @@ export const TrashRecoveryView: React.FC<Props> = ({
   projects,
   achievements,
   certificates,
+  languageCertificates = [],
   events,
   announcements,
   admins,
@@ -182,6 +185,23 @@ export const TrashRecoveryView: React.FC<Props> = ({
         });
       });
 
+    // Language Certificates
+    languageCertificates
+      .filter(lc => lc.isDeleted)
+      .forEach(lc => {
+        items.push({
+          id: lc.id,
+          collectionName: 'languageCertificates',
+          category: 'language_certificates',
+          categoryLabel: 'Til sertifikati',
+          title: `${lc.studentName} — ${lc.language} (${lc.level})`,
+          subtitle: `${lc.certificateType} ${lc.score ? `| Ball: ${lc.score}` : ''} | Raqami: ${lc.certificateNumber}`,
+          deletedAt: lc.deletedAt,
+          deletedBy: lc.deletedBy,
+          raw: lc,
+        });
+      });
+
     // Events
     events
       .filter(e => e.isDeleted)
@@ -234,7 +254,7 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     return items;
-  }, [students, supervisors, projects, achievements, certificates, events, announcements, admins]);
+  }, [students, supervisors, projects, achievements, certificates, languageCertificates, events, announcements, admins]);
 
   // Counts by category for tabs & modal breakdown
   const categoryCounts = useMemo(() => {
@@ -244,6 +264,7 @@ export const TrashRecoveryView: React.FC<Props> = ({
       supervisors: trashItems.filter(i => i.category === 'supervisors').length,
       projects: trashItems.filter(i => i.category === 'projects').length,
       certificates: trashItems.filter(i => i.category === 'certificates').length,
+      language_certificates: trashItems.filter(i => i.category === 'language_certificates').length,
       achievements: trashItems.filter(i => i.category === 'achievements').length,
       events: trashItems.filter(i => i.category === 'events').length,
       announcements: trashItems.filter(i => i.category === 'announcements').length,
@@ -578,6 +599,18 @@ export const TrashRecoveryView: React.FC<Props> = ({
             >
               Sertifikatlar ({categoryCounts.certificates})
             </button>
+            {categoryCounts.language_certificates > 0 && (
+              <button
+                onClick={() => setSelectedCategory('language_certificates')}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                  selectedCategory === 'language_certificates'
+                    ? 'bg-emerald-700 border-emerald-700 text-white'
+                    : 'bg-slate-100 hover:bg-slate-200 border-slate-200 text-slate-700'
+                }`}
+              >
+                Til sertifikatlari ({categoryCounts.language_certificates})
+              </button>
+            )}
             <button
               onClick={() => setSelectedCategory('achievements')}
               className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
@@ -920,6 +953,12 @@ export const TrashRecoveryView: React.FC<Props> = ({
                   <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                     <span className="text-slate-600">Sertifikatlar:</span>
                     <strong className="text-slate-900">{categoryCounts.certificates} ta</strong>
+                  </div>
+                )}
+                {categoryCounts.language_certificates > 0 && (
+                  <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <span className="text-slate-600">Til sertifikatlari:</span>
+                    <strong className="text-slate-900">{categoryCounts.language_certificates} ta</strong>
                   </div>
                 )}
                 {categoryCounts.achievements > 0 && (

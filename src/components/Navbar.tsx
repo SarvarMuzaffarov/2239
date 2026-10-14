@@ -10,7 +10,9 @@ import {
   Globe,
   Calendar,
   Bell,
-  Send
+  Send,
+  Rocket,
+  Trophy
 } from 'lucide-react';
 import type {
   UserAccount,
@@ -113,30 +115,58 @@ export const Navbar: React.FC<Props> = ({
           </div>
 
           {/* Desktop Navigation Links (Public Sections) */}
-          <nav className="hidden lg:flex items-center gap-1 xl:gap-1.5 text-xs font-semibold text-slate-600">
+          <nav className="hidden xl:flex items-center gap-1 text-xs font-semibold text-slate-600">
             <button
               type="button"
               onClick={() => handleNavClick('top')}
-              className="px-3 py-2 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors"
+              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Bosh sahifa
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('tadbirlar')}
-              className="px-3 py-2 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors"
+              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Tadbirlar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick('elonlar')}
+              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              E'lonlar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick('loyihalar')}
+              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              Loyihalar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick('yonalishlar')}
+              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              Yo‘nalishlar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick('faol-talabalar')}
+              className="px-2.5 py-1.5 rounded-xl text-amber-900 hover:bg-amber-50 transition-colors cursor-pointer font-bold"
+            >
+              Top-3
             </button>
             <a
               href="https://t.me/yosh_olimlar_tktiyf"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-2 rounded-xl text-sky-600 hover:text-sky-700 hover:bg-sky-50 transition-colors flex items-center gap-1.5 font-medium"
+              className="px-2.5 py-1.5 rounded-xl text-sky-600 hover:text-sky-700 hover:bg-sky-50 transition-colors flex items-center gap-1 font-medium ml-1"
               title="Yosh olimlar Telegram kanali"
             >
               <Send className="w-3.5 h-3.5" />
-              <span>Telegram kanal</span>
+              <span>Telegram</span>
             </a>
           </nav>
 
@@ -323,7 +353,7 @@ export const Navbar: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => handleNavClick('top')}
-                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5"
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer"
               >
                 <Globe className="w-4 h-4 text-blue-900" />
                 <span>Bosh sahifa</span>
@@ -332,10 +362,46 @@ export const Navbar: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => handleNavClick('tadbirlar')}
-                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5"
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer"
               >
                 <Calendar className="w-4 h-4 text-blue-900" />
                 <span>Tadbirlar va tanlovlar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavClick('elonlar')}
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer"
+              >
+                <Bell className="w-4 h-4 text-amber-600" />
+                <span>Universitet e'lonlari</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavClick('loyihalar')}
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer"
+              >
+                <Rocket className="w-4 h-4 text-emerald-600" />
+                <span>Loyihalar va startaplar</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavClick('yonalishlar')}
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer"
+              >
+                <GraduationCap className="w-4 h-4 text-purple-600" />
+                <span>18 ta ta'lim yo‘nalishlari</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavClick('faol-talabalar')}
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-amber-50 text-amber-900 flex items-center gap-2.5 cursor-pointer font-bold"
+              >
+                <Trophy className="w-4 h-4 text-amber-600" />
+                <span>Top-3 faol talabalar</span>
               </button>
 
               <a

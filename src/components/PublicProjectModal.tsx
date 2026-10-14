@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   X,
   FileText,
@@ -8,15 +8,21 @@ import {
   Building,
   Users,
   ExternalLink,
-  Download
+  Download,
+  Send,
+  Copy,
+  Check,
+  Share2
 } from 'lucide-react';
 import type { ProjectOrStartup } from '../types';
+import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
 
 interface Props {
   isOpen: boolean;
   project: ProjectOrStartup | null;
   onClose: () => void;
   onOpenPdf?: (url: string, name?: string, size?: number, title?: string) => void;
+  onNotify?: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
 export const PublicProjectModal: React.FC<Props> = ({
@@ -24,10 +30,41 @@ export const PublicProjectModal: React.FC<Props> = ({
   project,
   onClose,
   onOpenPdf,
+  onNotify,
 }) => {
+  const [copiedLink, setCopiedLink] = useState(false);
+
   if (!isOpen || !project) return null;
 
   const isStartup = project.type === 'startap';
+  const shareUrl = getShareUrl('project', project.id);
+
+  const handleCopyLink = async () => {
+    const success = await copyShareLink(shareUrl);
+    if (success) {
+      setCopiedLink(true);
+      if (onNotify) {
+        onNotify('success', 'Loyiha havolasi nusxalandi!');
+      }
+      setTimeout(() => setCopiedLink(false), 2500);
+    } else if (onNotify) {
+      onNotify('error', 'Havolani nusxalashda xatolik yuz berdi.');
+    }
+  };
+
+  const handleShareTelegram = () => {
+    shareToTelegram({
+      title: project.title,
+      url: shareUrl,
+      category: isStartup ? 'Startap ishlanma' : 'Ilmiy tadqiqot loyihasi',
+      details: [
+        `🎓 Yo‘nalish: ${project.field || 'TKTI Yangiyer filiali'}`,
+        `👥 Muallif: ${project.authorNames || project.studentName || 'Talabalar'}`,
+        `✅ Holati: ${project.status || 'Tasdiqlangan'}`,
+      ],
+      extraText: project.description ? project.description.slice(0, 180) + '...' : '',
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
@@ -131,7 +168,7 @@ export const PublicProjectModal: React.FC<Props> = ({
                       project.title
                     )
                   }
-                  className="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors"
+                  className="px-3 py-1.5 bg-blue-900 hover:bg-blue-800 text-white rounded-lg text-xs font-semibold shrink-0 transition-colors cursor-pointer"
                 >
                   Ko‘rish
                 </button>
@@ -148,6 +185,51 @@ export const PublicProjectModal: React.FC<Props> = ({
               )}
             </div>
           )}
+
+          {/* Deep link & Telegram Share Box */}
+          <div className="p-4 rounded-2xl bg-gradient-to-r from-sky-50/70 to-blue-50/70 border border-sky-100/90 space-y-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-sky-900">
+                <Share2 className="w-3.5 h-3.5 text-sky-700" />
+                <span>Loyiha havolasini ulashish</span>
+              </div>
+              <span className="text-[11px] text-slate-500 font-medium">Telegram kanal yoki guruhlar uchun</span>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div
+                className="flex-1 px-3 py-2 bg-white rounded-xl border border-slate-200 text-[11px] font-mono text-slate-600 truncate select-all"
+                title={shareUrl}
+              >
+                {shareUrl}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyLink}
+                  className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                    copiedLink
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
+                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                  }`}
+                  title="Havoladan nusxa olish"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-700" /> : <Copy className="w-3.5 h-3.5 text-slate-600" />}
+                  <span>{copiedLink ? 'Nusxalandi!' : 'Nusxalash'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleShareTelegram}
+                  className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-500 hover:bg-sky-600 text-white flex items-center justify-center gap-1.5 shadow-xs transition-all cursor-pointer active:scale-[0.98]"
+                  title="Telegramga yuborish"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Telegramda ulashish</span>
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}

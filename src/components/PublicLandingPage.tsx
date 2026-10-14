@@ -25,6 +25,11 @@ import {
   Trophy,
   Star,
   Pencil,
+  Bell,
+  Send,
+  Copy,
+  Check,
+  Share2
 } from 'lucide-react';
 import type {
   StudentProfile,
@@ -37,6 +42,8 @@ import type {
   UserAccount,
 } from '../types';
 import { hasPermission } from '../lib/permissions';
+import { DIRECTIONS, canonicalizeDirection } from '../constants/directions';
+import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
 
 interface Props {
   students: StudentProfile[];
@@ -57,6 +64,7 @@ interface Props {
   onOpenAnnouncementDetail: (announcement: Announcement) => void;
   onOpenStudentProfile?: (studentId: string) => void;
   onOpenManageTopStudents?: () => void;
+  onNotify?: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
 export const PublicLandingPage: React.FC<Props> = ({
@@ -78,10 +86,32 @@ export const PublicLandingPage: React.FC<Props> = ({
   onOpenAnnouncementDetail,
   onOpenStudentProfile,
   onOpenManageTopStudents,
+  onNotify,
 }) => {
   // Search & Filters
   const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'ongoing'>('all');
+  const [projectFilter, setProjectFilter] = useState<'all' | 'startap' | 'loyiha'>('all');
   const [achievementCategory, setAchievementCategory] = useState<string>('all');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const notifyUser = (type: 'success' | 'error' | 'info', message: string) => {
+    if (onNotify) {
+      onNotify(type, message);
+    }
+  };
+
+  const handleCopy = async (e: React.MouseEvent, type: any, id: string, label: string) => {
+    e.stopPropagation();
+    const url = getShareUrl(type, id);
+    const success = await copyShareLink(url);
+    if (success) {
+      setCopiedId(id);
+      notifyUser('success', `${label} havolasi nusxalandi!`);
+      setTimeout(() => setCopiedId(null), 2500);
+    } else {
+      notifyUser('error', 'Havolani nusxalashda xatolik.');
+    }
+  };
 
   // Real Computed Statistics directly from live collections
   const stats = useMemo(() => {
@@ -99,8 +129,9 @@ export const PublicLandingPage: React.FC<Props> = ({
       achievementsCount: approvedAchievements.length,
       certificatesCount: certificates.length,
       eventsCount: events.length,
+      announcementsCount: announcements.length,
     };
-  }, [students, supervisors, projects, achievements, certificates, events]);
+  }, [students, supervisors, projects, achievements, certificates, events, announcements]);
 
   // Filtered Events
   const filteredEvents = useMemo(() => {
@@ -109,6 +140,13 @@ export const PublicLandingPage: React.FC<Props> = ({
     if (eventFilter === 'ongoing') return events.filter(e => e.status === 'Davom etmoqda');
     return events;
   }, [events, eventFilter]);
+
+  // Filtered Projects (Approved only)
+  const publicProjects = useMemo(() => {
+    const list = projects.filter(p => p.status === 'Tasdiqlangan');
+    if (projectFilter === 'all') return list;
+    return list.filter(p => p.type === projectFilter);
+  }, [projects, projectFilter]);
 
   // Filtered Achievements (Approved only)
   const publicAchievements = useMemo(() => {
@@ -161,49 +199,70 @@ export const PublicLandingPage: React.FC<Props> = ({
             Iqtidorli yoshlarni aniqlash, qo‘llab-quvvatlash va ularning ilmiy, innovatsion hamda ijodiy faoliyatini rivojlantirish uchun yagona raqamli platforma.
           </p>
 
-          {/* CTA Buttons */}
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3 sm:gap-4">
+          {/* Quick Section Anchors Bar */}
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
             {currentUser ? (
               <a
                 href="#dashboard"
                 onClick={e => {
                   e.preventDefault();
-                  // Handled by parent view toggle
                   window.location.hash = '#dashboard';
                 }}
-                className="min-h-[44px] px-6 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-semibold text-sm shadow-xs transition-all flex items-center gap-2 active:scale-[0.99]"
+                className="min-h-[42px] px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-semibold text-xs shadow-xs transition-all flex items-center gap-2 active:scale-[0.99]"
               >
                 <span>Mening kabinetim</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </a>
             ) : (
               <button
                 type="button"
                 onClick={onOpenLogin}
-                className="min-h-[44px] px-6 py-3 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-semibold text-sm shadow-xs transition-all flex items-center gap-2 active:scale-[0.99]"
+                className="min-h-[42px] px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-semibold text-xs shadow-xs transition-all flex items-center gap-2 active:scale-[0.99] cursor-pointer"
               >
                 <span>Platformaga kirish</span>
-                <ArrowRight className="w-4 h-4" />
+                <ArrowRight className="w-3.5 h-3.5" />
               </button>
             )}
 
             <a
               href="#tadbirlar"
-              className="min-h-[44px] px-5 py-3 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-sm shadow-2xs transition-all flex items-center gap-2"
+              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs shadow-2xs transition-all flex items-center gap-1.5"
             >
-              <Calendar className="w-4 h-4 text-blue-900" />
-              <span>Tadbirlarni ko‘rish</span>
+              <Calendar className="w-3.5 h-3.5 text-blue-900" />
+              <span>Tadbirlar</span>
             </a>
 
-            {!currentUser && (
-              <button
-                type="button"
-                onClick={onOpenRegister}
-                className="min-h-[44px] px-5 py-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 font-semibold text-sm transition-all"
-              >
-                Ro‘yxatdan o‘tish
-              </button>
-            )}
+            <a
+              href="#elonlar"
+              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs shadow-2xs transition-all flex items-center gap-1.5"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-600" />
+              <span>E'lonlar</span>
+            </a>
+
+            <a
+              href="#loyihalar"
+              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs shadow-2xs transition-all flex items-center gap-1.5"
+            >
+              <Rocket className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Loyihalar & Startaplar</span>
+            </a>
+
+            <a
+              href="#yonalishlar"
+              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 font-semibold text-xs shadow-2xs transition-all flex items-center gap-1.5"
+            >
+              <GraduationCap className="w-3.5 h-3.5 text-purple-700" />
+              <span>Yo‘nalishlar</span>
+            </a>
+
+            <a
+              href="#faol-talabalar"
+              className="min-h-[42px] px-4 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-semibold text-xs transition-all flex items-center gap-1.5"
+            >
+              <Trophy className="w-3.5 h-3.5 text-amber-600" />
+              <span>Top-3 talabalar</span>
+            </a>
           </div>
         </div>
       </section>
@@ -221,9 +280,19 @@ export const PublicLandingPage: React.FC<Props> = ({
               Platforma real statistikasi
             </h3>
           </div>
-          <span className="text-xs text-slate-500">
-            Cloud Firestore real-time ma'lumotlari asosida
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">
+              Cloud Firestore real-time ma'lumotlari asosida
+            </span>
+            <button
+              type="button"
+              onClick={e => handleCopy(e, 'section', 'statistika', 'Statistika bo‘limi')}
+              className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              title="Statistika bo‘limi havolasini nusxalash"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
 
         {/* Dynamic Metric Cards */}
@@ -357,17 +426,29 @@ export const PublicLandingPage: React.FC<Props> = ({
             </p>
           </div>
 
-          {canManageTopStudents && (
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            {canManageTopStudents && (
+              <button
+                type="button"
+                onClick={onOpenManageTopStudents}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-[0.99]"
+                title="Eng faol talabalarni belgilash yoki o‘zgartirish"
+              >
+                <Trophy className="w-4 h-4 text-slate-950" />
+                <span>{topActiveStudents.length > 0 ? 'Top talabalarni tahrirlash' : 'Top talabalarni belgilash'}</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={onOpenManageTopStudents}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all self-start sm:self-auto cursor-pointer active:scale-[0.99]"
-              title="Eng faol talabalarni belgilash yoki o‘zgartirish"
+              onClick={e => handleCopy(e, 'section', 'faol-talabalar', 'Top-3 talabalar bo‘limi')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-2xs"
+              title="Ushbu bo‘lim havolasini nusxalash"
             >
-              <Trophy className="w-4 h-4 text-slate-950" />
-              <span>{topActiveStudents.length > 0 ? 'Top talabalarni tahrirlash' : 'Top talabalarni belgilash'}</span>
+              <Share2 className="w-3.5 h-3.5 text-slate-500" />
+              <span>Bo‘lim havolasi</span>
             </button>
-          )}
+          </div>
         </div>
 
         {topActiveStudents.length > 0 ? (
@@ -416,6 +497,9 @@ export const PublicLandingPage: React.FC<Props> = ({
                 : isSecond
                 ? 'ring-4 ring-slate-300'
                 : 'ring-4 ring-amber-700/30';
+
+              const stShareUrl = getShareUrl('student', st.id);
+              const isCopied = copiedId === st.id;
 
               return (
                 <div
@@ -496,8 +580,8 @@ export const PublicLandingPage: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* Card Action */}
-                  <div className="pt-4 mt-4 border-t border-slate-200/80 flex items-center justify-between gap-2">
+                  {/* Card Action & Share Buttons */}
+                  <div className="pt-4 mt-4 border-t border-slate-200/80 space-y-2">
                     <button
                       type="button"
                       onClick={() => onOpenStudentProfile && onOpenStudentProfile(st.id)}
@@ -506,13 +590,51 @@ export const PublicLandingPage: React.FC<Props> = ({
                       <span>To‘liq portfolioni ko‘rish</span>
                       <ChevronRight className="w-4 h-4 text-blue-900" />
                     </button>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={e => handleCopy(e, 'student', st.id, st.fullName)}
+                        className={`flex-1 py-1.5 px-3 rounded-lg text-[11px] font-semibold border flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
+                          isCopied
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 font-bold'
+                            : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                        title="Talaba portfoliosi havolasini nusxalash"
+                      >
+                        {isCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3 text-slate-400" />}
+                        <span>{isCopied ? 'Nusxalandi!' : 'Havolani nusxalash'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          shareToTelegram({
+                            title: `${st.fullName} — Iqtidorli talaba portfoliosi`,
+                            url: stShareUrl,
+                            category: `Oliy e’tirof (${rank}-o‘rin)`,
+                            details: [
+                              `🎓 ${st.course}-kurs, ${st.group}-guruh`,
+                              `📚 Yo‘nalish: ${st.facultyOrField}`,
+                              supervisor ? `👨‍🏫 Rahbar: ${supervisor.fullName}` : '',
+                            ],
+                            extraText: st.topStudentReason || '',
+                          });
+                        }}
+                        className="py-1.5 px-3 rounded-lg text-[11px] font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                        title="Telegramda ulashish"
+                      >
+                        <Send className="w-3 h-3 text-sky-600" />
+                        <span>Telegram</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
             })}
           </div>
         ) : (
-          /* Empty state for Top Students */
           <div className="bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 text-center space-y-4 shadow-2xs">
             <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-2xs">
               <Trophy className="w-7 h-7" />
@@ -561,40 +683,51 @@ export const PublicLandingPage: React.FC<Props> = ({
             </p>
           </div>
 
-          {/* Event Status Filter */}
-          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl text-xs font-semibold self-start sm:self-auto">
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            {/* Event Status Filter */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setEventFilter('all')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  eventFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Barchasi ({events.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventFilter('upcoming')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  eventFilter === 'upcoming'
+                    ? 'bg-white text-blue-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Rejalashtirilgan
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventFilter('ongoing')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  eventFilter === 'ongoing'
+                    ? 'bg-white text-emerald-800 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Davom etmoqda
+              </button>
+            </div>
+
             <button
               type="button"
-              onClick={() => setEventFilter('all')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                eventFilter === 'all'
-                  ? 'bg-white text-slate-900 shadow-2xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
+              onClick={e => handleCopy(e, 'section', 'tadbirlar', 'Tadbirlar bo‘limi')}
+              className="p-2 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+              title="Tadbirlar bo‘limi havolasini nusxalash"
             >
-              Barchasi ({events.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setEventFilter('upcoming')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                eventFilter === 'upcoming'
-                  ? 'bg-white text-blue-900 shadow-2xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Rejalashtirilgan
-            </button>
-            <button
-              type="button"
-              onClick={() => setEventFilter('ongoing')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                eventFilter === 'ongoing'
-                  ? 'bg-white text-emerald-800 shadow-2xs font-bold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Davom etmoqda
+              <Share2 className="w-4 h-4" />
             </button>
           </div>
         </div>
@@ -606,11 +739,13 @@ export const PublicLandingPage: React.FC<Props> = ({
               const participantCount = event.participantIds?.length || 0;
               const isUpcoming = event.status === 'Rejalashtirilgan';
               const isOngoing = event.status === 'Davom etmoqda';
+              const isCopied = copiedId === event.id;
+              const eventShareUrl = getShareUrl('event', event.id);
 
               return (
                 <div
                   key={event.id}
-                  className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-sm transition-all p-5 flex flex-col justify-between"
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-sm transition-all p-5 flex flex-col justify-between group"
                 >
                   <div className="space-y-3">
                     {/* Status & Date badge */}
@@ -634,7 +769,10 @@ export const PublicLandingPage: React.FC<Props> = ({
                       </span>
                     </div>
 
-                    <h4 className="text-base font-bold text-slate-900 leading-snug line-clamp-2">
+                    <h4
+                      onClick={() => onOpenEventDetail(event)}
+                      className="text-base font-bold text-slate-900 hover:text-blue-900 cursor-pointer transition-colors leading-snug line-clamp-2"
+                    >
                       {event.title}
                     </h4>
 
@@ -653,7 +791,7 @@ export const PublicLandingPage: React.FC<Props> = ({
                         <span className="truncate">Manzil: {event.location || 'Filial binosi'}</span>
                       </div>
                       {event.deadline && (
-                        <div className="flex items-center gap-2 text-rose-600">
+                        <div className="flex items-center gap-2 text-rose-600 font-semibold">
                           <Clock className="w-3.5 h-3.5 shrink-0" />
                           <span>Muddati: {event.deadline}</span>
                         </div>
@@ -661,18 +799,57 @@ export const PublicLandingPage: React.FC<Props> = ({
                     </div>
                   </div>
 
-                  {/* Card Footer with Buttons */}
-                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
-                    <div className="text-xs text-slate-500">
-                      <span>Ishtirokchilar: </span>
-                      <strong className="text-slate-800 font-bold">{participantCount}</strong>
+                  {/* Card Footer with Buttons and Share */}
+                  <div className="pt-4 mt-4 border-t border-slate-100 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs text-slate-500">
+                      <span>Ishtirokchilar: <strong className="text-slate-800 font-bold">{participantCount}</strong></span>
+                      
+                      {/* Direct Share Icons */}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={e => handleCopy(e, 'event', event.id, event.title)}
+                          className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                            isCopied
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                          title="Tadbir havolasini nusxalash"
+                        >
+                          {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={e => {
+                            e.stopPropagation();
+                            shareToTelegram({
+                              title: event.title,
+                              url: eventShareUrl,
+                              category: 'Tadbir / Tanlov',
+                              details: [
+                                `📅 Sana: ${event.date}`,
+                                `⏰ Vaqt: ${event.time || 'Belgilanmagan'}`,
+                                `📍 Manzil: ${event.location || 'TKTI Yangiyer filiali'}`,
+                                event.deadline ? `⏳ Oxirgi muddat: ${event.deadline}` : '',
+                              ],
+                              extraText: event.description ? event.description.slice(0, 160) + '...' : '',
+                            });
+                          }}
+                          className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Telegram kanal yoki guruhda ulashish"
+                        >
+                          <Send className="w-3 h-3 text-sky-600" />
+                          <span>Telegram</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => onOpenEventDetail(event)}
-                        className="px-3 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                        className="flex-1 px-3 py-2 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer text-center"
                       >
                         Batafsil
                       </button>
@@ -681,7 +858,7 @@ export const PublicLandingPage: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={() => onOpenEventDetail(event)}
-                          className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 rounded-lg transition-colors"
+                          className="flex-1 px-3 py-2 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition-colors cursor-pointer text-center"
                         >
                           Ro‘yxatdan o‘tish
                         </button>
@@ -689,7 +866,7 @@ export const PublicLandingPage: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={onOpenLogin}
-                          className="px-3 py-1.5 text-xs font-semibold text-slate-700 hover:text-blue-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="flex-1 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-blue-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer text-center"
                           title="Ro‘yxatdan o‘tish uchun tizimga kiring"
                         >
                           Qatnashish
@@ -711,7 +888,416 @@ export const PublicLandingPage: React.FC<Props> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 5. UMUMIY YUTUQLAR SECTION */}
+      {/* 4. RASMIY E'LONLAR SECTION */}
+      {/* ========================================================================= */}
+      <section id="elonlar" className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+              <span className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Bell className="w-3.5 h-3.5 text-amber-600" />
+                <span>Rasmiy xabarnomalar</span>
+              </span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
+              Universitet e'lonlari
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              O'quv jarayonlari, ilmiy tanlovlar va muhim ma'muriy yangiliklar
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={e => handleCopy(e, 'section', 'elonlar', 'E\'lonlar bo‘limi')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-2xs self-start sm:self-auto"
+            title="E'lonlar bo‘limi havolasini nusxalash"
+          >
+            <Share2 className="w-3.5 h-3.5 text-slate-500" />
+            <span>Bo‘lim havolasi</span>
+          </button>
+        </div>
+
+        {announcements.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {announcements.slice(0, 6).map(ann => {
+              const isCopied = copiedId === ann.id;
+              const annShareUrl = getShareUrl('announcement', ann.id);
+
+              return (
+                <div
+                  key={ann.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-sm transition-all p-5 flex flex-col justify-between"
+                >
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                        {ann.audience || 'Umumiy'}
+                      </span>
+                      <span className="text-xs text-slate-400 font-mono flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        <span>{ann.date}</span>
+                      </span>
+                    </div>
+
+                    <h4
+                      onClick={() => onOpenAnnouncementDetail(ann)}
+                      className="text-base font-bold text-slate-900 hover:text-blue-900 cursor-pointer transition-colors leading-snug line-clamp-2"
+                    >
+                      {ann.title}
+                    </h4>
+
+                    <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                      {ann.content}
+                    </p>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenAnnouncementDetail(ann)}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      Batafsil o‘qish
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={e => handleCopy(e, 'announcement', ann.id, ann.title)}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isCopied
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                        title="E'lon havolasini nusxalash"
+                      >
+                        {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          shareToTelegram({
+                            title: ann.title,
+                            url: annShareUrl,
+                            category: `E'lon (${ann.audience || 'Umumiy'})`,
+                            details: [`📅 Sana: ${ann.date}`],
+                            extraText: ann.content ? ann.content.slice(0, 180) + '...' : '',
+                          });
+                        }}
+                        className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Telegramda ulashish"
+                      >
+                        <Send className="w-3 h-3 text-sky-600" />
+                        <span>Telegram</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500">
+            <Bell className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold">Hozircha rasmiy e'lonlar mavjud emas</p>
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 5. LOYIHALAR VA STARTAPLAR SECTION */}
+      {/* ========================================================================= */}
+      <section id="loyihalar" className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
+              <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
+                <Rocket className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Innovatsiya va ilm-fan</span>
+              </span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
+              Talabalar loyihalari va startaplari
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Kimyo-texnologiya, biotexnologiya va amaliy fanlar bo‘yicha istiqbolli ishlanmalar
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            {/* Project Filter */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setProjectFilter('all')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  projectFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Barchasi ({projects.filter(p => p.status === 'Tasdiqlangan').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setProjectFilter('startap')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  projectFilter === 'startap'
+                    ? 'bg-white text-amber-800 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Startaplar
+              </button>
+              <button
+                type="button"
+                onClick={() => setProjectFilter('loyiha')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  projectFilter === 'loyiha'
+                    ? 'bg-white text-blue-900 shadow-2xs font-bold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Ilmiy loyihalar
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={e => handleCopy(e, 'section', 'loyihalar', 'Loyihalar bo‘limi')}
+              className="p-2 text-slate-500 hover:text-blue-900 hover:bg-slate-100 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+              title="Loyihalar bo‘limi havolasini nusxalash"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {publicProjects.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {publicProjects.slice(0, 6).map(proj => {
+              const isStartup = proj.type === 'startap';
+              const isCopied = copiedId === proj.id;
+              const projShareUrl = getShareUrl('project', proj.id);
+
+              return (
+                <div
+                  key={proj.id}
+                  className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs hover:shadow-sm transition-all p-5 flex flex-col justify-between"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                          isStartup
+                            ? 'bg-amber-50 text-amber-800 border-amber-200'
+                            : 'bg-blue-50 text-blue-800 border-blue-200'
+                        }`}
+                      >
+                        {isStartup ? 'Startap ishlanma' : 'Ilmiy tadqiqot'}
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        <span>Tasdiqlangan</span>
+                      </span>
+                    </div>
+
+                    <h4
+                      onClick={() => onOpenProjectDetail(proj)}
+                      className="text-base font-bold text-slate-900 hover:text-blue-900 cursor-pointer transition-colors leading-snug line-clamp-2"
+                    >
+                      {proj.title}
+                    </h4>
+
+                    <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                      {proj.description}
+                    </p>
+
+                    <div className="space-y-1 pt-1 text-xs text-slate-500">
+                      <div className="truncate">
+                        Yo‘nalish: <strong className="text-slate-800">{proj.field || 'TKTI Yangiyer'}</strong>
+                      </div>
+                      <div className="truncate">
+                        Muallif: <strong className="text-slate-800">{proj.authorNames || proj.studentName}</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onOpenProjectDetail(proj)}
+                      className="px-3.5 py-1.5 text-xs font-semibold text-blue-900 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      Batafsil
+                    </button>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={e => handleCopy(e, 'project', proj.id, proj.title)}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isCopied
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200'
+                        }`}
+                        title="Loyiha havolasini nusxalash"
+                      >
+                        {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          shareToTelegram({
+                            title: proj.title,
+                            url: projShareUrl,
+                            category: isStartup ? 'Startap ishlanma' : 'Ilmiy tadqiqot loyihasi',
+                            details: [
+                              `🎓 Yo‘nalish: ${proj.field || 'TKTI Yangiyer filiali'}`,
+                              `👥 Muallif: ${proj.authorNames || proj.studentName}`,
+                            ],
+                            extraText: proj.description ? proj.description.slice(0, 160) + '...' : '',
+                          });
+                        }}
+                        className="px-2 py-1 rounded-lg text-[11px] font-semibold bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Telegramda ulashish"
+                      >
+                        <Send className="w-3 h-3 text-sky-600" />
+                        <span>Telegram</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500">
+            <Rocket className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="text-sm font-semibold">Ushbu toifada loyihalar mavjud emas</p>
+          </div>
+        )}
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 6. TA'LIM YO'NALISHLARI SECTION */}
+      {/* ========================================================================= */}
+      <section id="yonalishlar" className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 border-b border-slate-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="w-2.5 h-2.5 rounded-full bg-purple-600" />
+              <span className="text-xs font-bold text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-purple-600" />
+                <span>Akademik tuzilma</span>
+              </span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
+              18 ta ta'lim yo‘nalishlari
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-500 mt-1">
+              Har bir yo‘nalish bo‘yicha iqtidorli talabalar, ilmiy rahbarlar va startap ishlanmalar
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={e => handleCopy(e, 'section', 'yonalishlar', 'Ta\'lim yo‘nalishlari bo‘limi')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold rounded-xl transition-all cursor-pointer shadow-2xs self-start sm:self-auto"
+            title="Ta'lim yo‘nalishlari bo‘limi havolasini nusxalash"
+          >
+            <Share2 className="w-3.5 h-3.5 text-slate-500" />
+            <span>Bo‘lim havolasi</span>
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {DIRECTIONS.map(dirName => {
+            const dirStudentsCount = students.filter(
+              s => canonicalizeDirection(s.facultyOrField) === dirName
+            ).length;
+            const dirProjectsCount = projects.filter(
+              p => canonicalizeDirection(p.field) === dirName && p.status === 'Tasdiqlangan'
+            ).length;
+            const dirShareUrl = getShareUrl('direction', dirName);
+            const isCopied = copiedId === dirName;
+
+            return (
+              <div
+                key={dirName}
+                onClick={() => onSelectDirection && onSelectDirection(dirName)}
+                className="bg-white rounded-2xl border border-slate-200/90 p-4 sm:p-5 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+              >
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-900 flex items-center justify-center group-hover:bg-blue-900 group-hover:text-white transition-colors">
+                      <Building className="w-4 h-4" />
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={e => handleCopy(e, 'direction', dirName, dirName)}
+                        className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                          isCopied
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                            : 'bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-700 border-slate-200'
+                        }`}
+                        title="Ushbu yo‘nalish sahifasi havolasini nusxalash"
+                      >
+                        {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          shareToTelegram({
+                            title: `${dirName} — Ta'lim yo‘nalishi`,
+                            url: dirShareUrl,
+                            category: 'Ta\'lim yo‘nalishi',
+                            details: [
+                              `👨‍🎓 Iqtidorli talabalar: ${dirStudentsCount} nafar`,
+                              `🔬 Tasdiqlangan loyihalar: ${dirProjectsCount} ta`,
+                            ],
+                            extraText: 'Ushbu yo‘nalishdagi talabalar portfoliosi va ilmiy faoliyati bilan tanishing.',
+                          });
+                        }}
+                        className="p-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 transition-colors cursor-pointer"
+                        title="Telegramda ulashish"
+                      >
+                        <Send className="w-3.5 h-3.5 text-sky-600" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <h4 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-blue-900 transition-colors leading-snug">
+                    {dirName}
+                  </h4>
+                </div>
+
+                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                  <div className="flex items-center gap-3">
+                    <span>Talabalar: <strong className="text-slate-800">{dirStudentsCount}</strong></span>
+                    <span>Loyihalar: <strong className="text-slate-800">{dirProjectsCount}</strong></span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-900 transition-colors" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 7. UMUMIY YUTUQLAR SECTION */}
       {/* ========================================================================= */}
       {achievements.length > 0 && (
         <section id="yutuqlar" className="space-y-6">
@@ -738,7 +1324,7 @@ export const PublicLandingPage: React.FC<Props> = ({
                   key={cat}
                   type="button"
                   onClick={() => setAchievementCategory(cat)}
-                  className={`px-3 py-1.5 rounded-lg border transition-colors ${
+                  className={`px-3 py-1.5 rounded-lg border transition-colors cursor-pointer ${
                     achievementCategory === cat
                       ? 'bg-rose-50 text-rose-800 border-rose-200 font-bold'
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
@@ -806,13 +1392,23 @@ export const PublicLandingPage: React.FC<Props> = ({
       {/* 8. PLATFORMA HAQIDA / UNIVERSITY HIGHLIGHTS */}
       {/* ========================================================================= */}
       <section id="haqida" className="space-y-6">
-        <div className="border-b border-slate-200 pb-3">
-          <span className="text-xs font-bold text-blue-900 uppercase tracking-wider block">
-            Raqamli ekotizim
-          </span>
-          <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
-            Platformaning asosiy imkoniyatlari
-          </h3>
+        <div className="border-b border-slate-200 pb-3 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-bold text-blue-900 uppercase tracking-wider block">
+              Raqamli ekotizim
+            </span>
+            <h3 className="text-xl sm:text-2xl font-bold text-slate-900">
+              Platformaning asosiy imkoniyatlari
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={e => handleCopy(e, 'section', 'haqida', 'Platforma haqida bo‘limi')}
+            className="p-1.5 text-slate-400 hover:text-blue-900 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+            title="Bo‘lim havolasini nusxalash"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

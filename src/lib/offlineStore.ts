@@ -292,6 +292,44 @@ class OfflineStore {
     this.notify(key);
   }
 
+  public deleteItemsBatch(items: { collectionName: CollectionKey; id: string }[], soft = true) {
+    if (!items || items.length === 0) return;
+    const affectedCollections = new Set<CollectionKey>();
+    const now = new Date().toISOString();
+
+    for (const item of items) {
+      const key = item.collectionName;
+      if (!this.data[key]) continue;
+      affectedCollections.add(key);
+      const list = this.data[key] as any[];
+      const idx = list.findIndex(i => i && i.id === item.id);
+
+      if (soft) {
+        if (idx >= 0) {
+          list[idx] = {
+            ...list[idx],
+            isDeleted: true,
+            deletedAt: now,
+          };
+        }
+      } else {
+        this.permanentlyDeletedIds.add(item.id);
+        if (idx >= 0) {
+          list.splice(idx, 1);
+        }
+      }
+    }
+
+    if (!soft) {
+      this.saveDeletedIds();
+    }
+
+    for (const col of affectedCollections) {
+      this.persistCollection(col);
+      this.notify(col);
+    }
+  }
+
   public syncFromFirestore<K extends CollectionKey>(key: K, firestoreItems: any[]) {
     if (!firestoreItems || !Array.isArray(firestoreItems)) return;
     const current = this.data[key] as any[];
