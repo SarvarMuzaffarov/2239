@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface Props {
@@ -6,25 +6,47 @@ interface Props {
   title: string;
   message: string;
   confirmLabel?: string;
+  confirmText?: string;
   cancelLabel?: string;
+  cancelText?: string;
   isDestructive?: boolean;
   isLoading?: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
+  onConfirm: () => void | Promise<void>;
+  onCancel?: () => void;
+  onClose?: () => void;
 }
 
 export const ConfirmModal: React.FC<Props> = ({
   isOpen,
   title,
   message,
-  confirmLabel = 'Tasdiqlash',
-  cancelLabel = 'Bekor qilish',
+  confirmLabel,
+  confirmText,
+  cancelLabel,
+  cancelText,
   isDestructive = false,
-  isLoading = false,
+  isLoading: externalLoading = false,
   onConfirm,
   onCancel,
+  onClose,
 }) => {
+  const [internalLoading, setInternalLoading] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleClose = onCancel || onClose || (() => {});
+  const displayConfirm = confirmText || confirmLabel || 'Tasdiqlash';
+  const displayCancel = cancelText || cancelLabel || 'Bekor qilish';
+  const isBusy = externalLoading || internalLoading;
+
+  const handleConfirm = async () => {
+    try {
+      setInternalLoading(true);
+      await onConfirm();
+    } finally {
+      setInternalLoading(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
@@ -41,9 +63,10 @@ export const ConfirmModal: React.FC<Props> = ({
             <h3 className="text-lg font-semibold text-slate-900 leading-snug">{title}</h3>
           </div>
           <button
-            onClick={onCancel}
-            disabled={isLoading}
-            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+            type="button"
+            onClick={handleClose}
+            disabled={isBusy}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -54,23 +77,23 @@ export const ConfirmModal: React.FC<Props> = ({
         <div className="flex items-center justify-end gap-3">
           <button
             type="button"
-            onClick={onCancel}
-            disabled={isLoading}
-            className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200"
+            onClick={handleClose}
+            disabled={isBusy}
+            className="px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-xl transition-colors border border-slate-200 cursor-pointer disabled:opacity-50"
           >
-            {cancelLabel}
+            {displayCancel}
           </button>
           <button
             type="button"
-            onClick={onConfirm}
-            disabled={isLoading}
-            className={`px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors shadow-xs ${
+            onClick={handleConfirm}
+            disabled={isBusy}
+            className={`px-4 py-2 text-sm font-medium text-white rounded-xl transition-colors shadow-xs cursor-pointer ${
               isDestructive
                 ? 'bg-rose-600 hover:bg-rose-700 active:bg-rose-800'
                 : 'bg-blue-900 hover:bg-blue-800 active:bg-blue-950'
             } disabled:opacity-50`}
           >
-            {isLoading ? 'Bajarilmoqda...' : confirmLabel}
+            {isBusy ? 'Bajarilmoqda...' : displayConfirm}
           </button>
         </div>
       </div>

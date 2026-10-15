@@ -44,6 +44,7 @@ import type {
 import { hasPermission } from '../lib/permissions';
 import { DIRECTIONS, canonicalizeDirection } from '../constants/directions';
 import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
+import { AutoLinkedText } from './AutoLinkedText';
 
 interface Props {
   students: StudentProfile[];
@@ -89,7 +90,7 @@ export const PublicLandingPage: React.FC<Props> = ({
   onNotify,
 }) => {
   // Search & Filters
-  const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'ongoing'>('all');
+  const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'ongoing' | 'olimpiada'>('all');
   const [projectFilter, setProjectFilter] = useState<'all' | 'startap' | 'loyiha'>('all');
   const [achievementCategory, setAchievementCategory] = useState<string>('all');
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -133,9 +134,15 @@ export const PublicLandingPage: React.FC<Props> = ({
     };
   }, [students, supervisors, projects, achievements, certificates, events, announcements]);
 
+  const olympiadsCount = useMemo(() => {
+    return events.filter(e => e.eventType === 'Olimpiada' || (e.title || '').toLowerCase().includes('olimpiada')).length;
+  }, [events]);
+
   // Filtered Events
   const filteredEvents = useMemo(() => {
-    if (eventFilter === 'all') return events;
+    if (eventFilter === 'olimpiada') {
+      return events.filter(e => e.eventType === 'Olimpiada' || (e.title || '').toLowerCase().includes('olimpiada'));
+    }
     if (eventFilter === 'upcoming') return events.filter(e => e.status === 'Rejalashtirilgan');
     if (eventFilter === 'ongoing') return events.filter(e => e.status === 'Davom etmoqda');
     return events;
@@ -685,7 +692,7 @@ export const PublicLandingPage: React.FC<Props> = ({
 
           <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
             {/* Event Status Filter */}
-            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold">
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs font-semibold flex-wrap">
               <button
                 type="button"
                 onClick={() => setEventFilter('all')}
@@ -696,6 +703,18 @@ export const PublicLandingPage: React.FC<Props> = ({
                 }`}
               >
                 Barchasi ({events.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setEventFilter('olimpiada')}
+                className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  eventFilter === 'olimpiada'
+                    ? 'bg-amber-100 text-amber-950 border border-amber-300 shadow-2xs font-bold'
+                    : 'text-amber-800 hover:text-amber-950 hover:bg-amber-50'
+                }`}
+              >
+                <Trophy className="w-3.5 h-3.5 text-amber-600" />
+                <span>Olimpiadalar ({olympiadsCount})</span>
               </button>
               <button
                 type="button"
@@ -749,19 +768,27 @@ export const PublicLandingPage: React.FC<Props> = ({
                 >
                   <div className="space-y-3">
                     {/* Status & Date badge */}
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
-                          isOngoing
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : isUpcoming
-                            ? 'bg-blue-50 text-blue-800 border-blue-200'
-                            : 'bg-slate-100 text-slate-700 border-slate-200'
-                        }`}
-                      >
-                        {isOngoing && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />}
-                        <span>{event.status}</span>
-                      </span>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        {(event.eventType === 'Olimpiada' || event.title.toLowerCase().includes('olimpiada')) && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-black bg-amber-50 text-amber-900 border border-amber-300 shadow-2xs">
+                            <Trophy className="w-3 h-3 text-amber-600" />
+                            <span>Olimpiada</span>
+                          </span>
+                        )}
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                            isOngoing
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              : isUpcoming
+                              ? 'bg-blue-50 text-blue-800 border-blue-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {isOngoing && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />}
+                          <span>{event.status}</span>
+                        </span>
+                      </div>
 
                       <span className="text-xs font-semibold text-slate-500 flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -776,9 +803,9 @@ export const PublicLandingPage: React.FC<Props> = ({
                       {event.title}
                     </h4>
 
-                    <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                      {event.description}
-                    </p>
+                    <div className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
+                      <AutoLinkedText text={event.description} />
+                    </div>
 
                     {/* Metadata items */}
                     <div className="space-y-1.5 pt-1 text-xs text-slate-600">
@@ -800,9 +827,15 @@ export const PublicLandingPage: React.FC<Props> = ({
                   </div>
 
                   {/* Card Footer with Buttons and Share */}
-                  <div className="pt-4 mt-4 border-t border-slate-100 space-y-2.5">
+                  <div className="pt-4 mt-4 border-t border-slate-100 space-y-3">
                     <div className="flex items-center justify-between text-xs text-slate-500">
-                      <span>Ishtirokchilar: <strong className="text-slate-800 font-bold">{participantCount}</strong></span>
+                      <span>
+                        Ishtirokchilar:{' '}
+                        <strong className="text-slate-800 font-bold">
+                          {participantCount}
+                          {event.participantsLimit ? ` / ${event.participantsLimit}` : ''}
+                        </strong>
+                      </span>
                       
                       {/* Direct Share Icons */}
                       <div className="flex items-center gap-1.5">
@@ -858,9 +891,15 @@ export const PublicLandingPage: React.FC<Props> = ({
                         <button
                           type="button"
                           onClick={() => onOpenEventDetail(event)}
-                          className="flex-1 px-3 py-2 text-xs font-semibold text-white bg-blue-900 hover:bg-blue-800 rounded-xl transition-colors cursor-pointer text-center"
+                          className={`flex-1 px-3 py-2 text-xs font-semibold text-white rounded-xl transition-colors cursor-pointer text-center ${
+                            event.eventType === 'Olimpiada' || (event.title || '').toLowerCase().includes('olimpiada')
+                              ? 'bg-amber-600 hover:bg-amber-700 shadow-2xs'
+                              : 'bg-blue-900 hover:bg-blue-800'
+                          }`}
                         >
-                          Ro‘yxatdan o‘tish
+                          {event.eventType === 'Olimpiada' || (event.title || '').toLowerCase().includes('olimpiada')
+                            ? '🏆 Ro‘yxatdan o‘tish'
+                            : 'Ro‘yxatdan o‘tish'}
                         </button>
                       ) : (
                         <button
@@ -869,7 +908,9 @@ export const PublicLandingPage: React.FC<Props> = ({
                           className="flex-1 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-blue-900 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer text-center"
                           title="Ro‘yxatdan o‘tish uchun tizimga kiring"
                         >
-                          Qatnashish
+                          {event.eventType === 'Olimpiada' || (event.title || '').toLowerCase().includes('olimpiada')
+                            ? '🏆 Qatnashish'
+                            : 'Qatnashish'}
                         </button>
                       )}
                     </div>
@@ -948,9 +989,9 @@ export const PublicLandingPage: React.FC<Props> = ({
                       {ann.title}
                     </h4>
 
-                    <p className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
-                      {ann.content}
-                    </p>
+                    <div className="text-xs text-slate-600 line-clamp-3 leading-relaxed">
+                      <AutoLinkedText text={ann.content} />
+                    </div>
                   </div>
 
                   <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between gap-2">

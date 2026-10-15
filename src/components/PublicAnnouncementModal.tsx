@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X, Calendar, User, Bell, Send, Copy, Check, Share2 } from 'lucide-react';
 import type { Announcement } from '../types';
 import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
+import { AutoLinkedText } from './AutoLinkedText';
 
 interface Props {
   isOpen: boolean;
@@ -84,8 +85,11 @@ export const PublicAnnouncementModal: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line bg-slate-50/60 p-4 rounded-2xl border border-slate-100">
-            {announcement.content}
+          <div className="bg-slate-50/60 p-4 rounded-2xl border border-slate-100">
+            <AutoLinkedText
+              text={announcement.content}
+              className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line block"
+            />
           </div>
 
           {/* Deep link & Telegram Share Box */}

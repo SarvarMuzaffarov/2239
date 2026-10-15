@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import type { ProjectOrStartup } from '../types';
 import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
+import { AutoLinkedText } from './AutoLinkedText';
 
 interface Props {
   isOpen: boolean;
@@ -137,9 +138,9 @@ export const PublicProjectModal: React.FC<Props> = ({
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
               Loyiha tavsifi va maqsadi
             </h4>
-            <p className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
-              {project.description}
-            </p>
+            <div className="text-xs sm:text-sm text-slate-700 leading-relaxed whitespace-pre-line">
+              <AutoLinkedText text={project.description} />
+            </div>
           </div>
 
           {/* Attached Document (if public fileUrl exists) */}

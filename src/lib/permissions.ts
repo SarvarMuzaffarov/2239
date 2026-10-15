@@ -157,6 +157,13 @@ export function hasPermission(
       const hasDirect = !!resPerms?.[action];
       if (hasDirect) return true;
 
+      // Allow admin to delete events & announcements if they manage them (have create, edit, or view)
+      if ((resource === 'events' || resource === 'announcements') && (action === 'delete' || action === 'create' || action === 'edit')) {
+        if (!resPerms || resPerms.view !== false) {
+          return true;
+        }
+      }
+
       // If checking export action, also allow if global 'excel' export is granted
       if (action === 'export' && !!user.permissions['excel']?.export) {
         return true;
@@ -172,13 +179,16 @@ export function hasPermission(
       return false;
     }
 
-    // Default fallback permissions ONLY for legacy admin accounts where permissions object was never configured:
+    // Default fallback permissions for admin accounts where permissions object was never configured:
     if (action === 'view') return true;
-    if (['projects', 'startups', 'achievements', 'certificates', 'events', 'announcements'].includes(resource)) {
-      if (['create', 'edit', 'approve', 'export'].includes(action)) return true;
+    if (['events', 'announcements'].includes(resource)) {
+      if (['view', 'create', 'edit', 'delete', 'export'].includes(action)) return true;
+    }
+    if (['projects', 'startups', 'achievements', 'certificates'].includes(resource)) {
+      if (['create', 'edit', 'delete', 'approve', 'export'].includes(action)) return true;
     }
     if (['students', 'supervisors'].includes(resource)) {
-      if (['edit', 'export'].includes(action)) return true;
+      if (['create', 'edit', 'delete', 'export'].includes(action)) return true;
     }
     return false;
   }

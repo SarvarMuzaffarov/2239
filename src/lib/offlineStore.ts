@@ -345,9 +345,9 @@ class OfflineStore {
     for (const item of firestoreItems) {
       if (item && item.id && !this.permanentlyDeletedIds.has(item.id)) {
         const local = map.get(item.id);
-        // If locally marked soft deleted and remote doesn't have deletion status yet, preserve soft delete
-        if (local?.isDeleted && item.isDeleted === undefined) {
-          map.set(item.id, { ...local, ...item, isDeleted: true });
+        // If locally marked soft deleted, preserve soft delete unless explicitly restored remotely
+        if (local?.isDeleted && !item.isDeleted && !item.restoredAt) {
+          map.set(item.id, { ...local, ...item, isDeleted: true, deletedAt: local.deletedAt || new Date().toISOString() });
         } else {
           map.set(item.id, { ...(local || {}), ...item });
         }

@@ -1379,14 +1379,7 @@ export async function deleteEventDoc(
     ? { id: actorOrId, fullName: actorName || 'Admin', role: 'admin' as UserRole }
     : { id: actorOrId.id, fullName: actorOrId.fullName, role: actorOrId.role || ('admin' as UserRole) };
 
-  await deleteDoc(doc(db, 'events', id));
-  await logAuditAction(
-    actor,
-    "Tadbirni o'chirish",
-    'events',
-    id,
-    `Tadbir o'chirildi.`
-  );
+  await softDeleteDocument('events', id, 'Tadbir', actor);
 }
 
 // ----------------- ANNOUNCEMENTS -----------------
@@ -1493,14 +1486,7 @@ export async function deleteAnnouncementDoc(
     ? { id: actorOrId, fullName: actorName || 'Admin', role: 'admin' as UserRole }
     : { id: actorOrId.id, fullName: actorOrId.fullName, role: actorOrId.role || ('admin' as UserRole) };
 
-  await deleteDoc(doc(db, 'announcements', id));
-  await logAuditAction(
-    actor,
-    "E'lonni o'chirish",
-    'announcements',
-    id,
-    `E'lon o'chirildi.`
-  );
+  await softDeleteDocument('announcements', id, "E'lon", actor);
 }
 
 export interface PaginatedStudentsOptions {
@@ -2570,13 +2556,17 @@ export async function softDeleteDocument(
 
   try {
     await withFirestoreTimeout(
-      updateDoc(ref, {
-        isDeleted: true,
-        deletedAt: now,
-        deletedBy: actorName,
-        updatedAt: now,
-      }),
-      4000,
+      setDoc(
+        ref,
+        {
+          isDeleted: true,
+          deletedAt: now,
+          deletedBy: actorName,
+          updatedAt: now,
+        },
+        { merge: true }
+      ),
+      5000,
       `${entityLabel}ni o'chirishda xatolik yuz berdi.`
     );
   } catch (err) {

@@ -27,6 +27,7 @@ import {
 } from '../../services/firestoreService';
 import { restoreUser, permanentDeleteUser } from '../../services/authService';
 import { hasPermission } from '../../lib/permissions';
+import { offlineStore } from '../../lib/offlineStore';
 import type {
   UserAccount,
   StudentProfile,
@@ -101,7 +102,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
     const items: TrashItem[] = [];
 
     // Students
-    students
+    const allStudentsSource = students.some(s => s.isDeleted) ? students : (offlineStore.get('students') || []);
+    allStudentsSource
       .filter(s => s.isDeleted)
       .forEach(s => {
         items.push({
@@ -118,7 +120,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Supervisors
-    supervisors
+    const allSupervisorsSource = supervisors.some(s => s.isDeleted) ? supervisors : (offlineStore.get('supervisors') || []);
+    allSupervisorsSource
       .filter(s => s.isDeleted)
       .forEach(s => {
         items.push({
@@ -135,7 +138,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Projects & Startups
-    projects
+    const allProjectsSource = projects.some(p => p.isDeleted) ? projects : (offlineStore.get('projects') || []);
+    allProjectsSource
       .filter(p => p.isDeleted)
       .forEach(p => {
         items.push({
@@ -152,7 +156,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Achievements
-    achievements
+    const allAchievementsSource = achievements.some(a => a.isDeleted) ? achievements : (offlineStore.get('achievements') || []);
+    allAchievementsSource
       .filter(a => a.isDeleted)
       .forEach(a => {
         items.push({
@@ -169,7 +174,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Certificates
-    certificates
+    const allCertificatesSource = certificates.some(c => c.isDeleted) ? certificates : (offlineStore.get('certificates') || []);
+    allCertificatesSource
       .filter(c => c.isDeleted)
       .forEach(c => {
         items.push({
@@ -186,7 +192,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Language Certificates
-    languageCertificates
+    const allLangCertsSource = languageCertificates.some(lc => lc.isDeleted) ? languageCertificates : (offlineStore.get('languageCertificates') || []);
+    allLangCertsSource
       .filter(lc => lc.isDeleted)
       .forEach(lc => {
         items.push({
@@ -203,7 +210,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Events
-    events
+    const allEventsSource = events.some(e => e.isDeleted) ? events : (offlineStore.get('events') || []);
+    allEventsSource
       .filter(e => e.isDeleted)
       .forEach(e => {
         items.push({
@@ -220,7 +228,8 @@ export const TrashRecoveryView: React.FC<Props> = ({
       });
 
     // Announcements
-    announcements
+    const allAnnouncementsSource = announcements.some(a => a.isDeleted) ? announcements : (offlineStore.get('announcements') || []);
+    allAnnouncementsSource
       .filter(a => a.isDeleted)
       .forEach(a => {
         items.push({
@@ -229,7 +238,7 @@ export const TrashRecoveryView: React.FC<Props> = ({
           category: 'announcements',
           categoryLabel: 'E’lon',
           title: a.title,
-          subtitle: `Chiqaruvchi: ${a.createdByName} | Sana: ${a.date}`,
+          subtitle: `Chiqaruvchi: ${a.createdByName || a.createdBy || 'Admin'} | Sana: ${a.date}`,
           deletedAt: a.deletedAt,
           deletedBy: a.deletedBy,
           raw: a,
