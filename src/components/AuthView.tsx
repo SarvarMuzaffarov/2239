@@ -3,6 +3,7 @@ import { LogIn, UserPlus, Eye, EyeOff, Lock, Phone, User, BookOpen, Users, Chevr
 import { loginWithPhone, registerStudent } from '../services/authService';
 import { formatUzbekPhone, validatePasswordStrength } from '../lib/crypto';
 import { DirectionSelect } from './DirectionSelect';
+import { SupervisorSelect } from './SupervisorSelect';
 import { isValidDirection, canonicalizeDirection } from '../constants/directions';
 import type { SupervisorProfile, UserAccount } from '../types';
 
@@ -509,30 +510,25 @@ export const AuthView: React.FC<Props> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                    Ilmiy rahbar *
-                  </label>
-                  <div className="relative">
-                    <Users className="w-4 h-4 text-slate-400 absolute left-3.5 top-3.5 pointer-events-none" />
-                    <select
-                      value={regSupervisorId}
-                      onChange={e => setRegSupervisorId(e.target.value)}
-                      className="w-full pl-10 pr-8 min-h-[44px] py-2.5 text-base sm:text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 transition-all"
-                    >
-                      <option value="">-- Ilmiy rahbarni tanlang --</option>
-                      {supervisors.map(sup => (
-                        <option key={sup.id} value={sup.id}>
-                          {sup.fullName} ({sup.position || 'Kafedra'}, {sup.department || ''})
-                        </option>
-                      ))}
-                      <option value="other">Boshqa (Ro‘yxatda bo‘lmasa)</option>
-                    </select>
-                  </div>
+                  <SupervisorSelect
+                    id="register-supervisor-select"
+                    label="Ilmiy rahbar"
+                    required
+                    supervisors={supervisors}
+                    value={regSupervisorId}
+                    onChange={val => {
+                      setRegSupervisorId(val);
+                      if (stepError) setStepError('');
+                    }}
+                    customSupervisorName={regCustomSupervisor}
+                    placeholder="-- Ilmiy rahbarni tanlang --"
+                    error={stepError && !regSupervisorId ? stepError : undefined}
+                  />
 
                   {regSupervisorId === 'other' && (
-                    <div className="mt-2.5 animate-in fade-in">
-                      <label className="block text-xs font-medium text-slate-700 mb-1">
-                        Ilmiy rahbar F.I.Sh. (Admin keyin tasdiqlaydi)
+                    <div className="mt-3 p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl animate-in fade-in space-y-1.5">
+                      <label className="block text-xs font-semibold text-amber-900">
+                        Ilmiy rahbar F.I.Sh. (Admin keyin tasdiqlaydi) *
                       </label>
                       <input
                         type="text"
@@ -540,8 +536,11 @@ export const AuthView: React.FC<Props> = ({
                         placeholder="Ilmiy rahbar to‘liq ismini yozing"
                         value={regCustomSupervisor}
                         onChange={e => setRegCustomSupervisor(e.target.value)}
-                        className="w-full px-3.5 min-h-[44px] py-2 text-base sm:text-sm bg-amber-50/60 border border-amber-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                        className="w-full px-3.5 min-h-[44px] py-2.5 text-base sm:text-sm bg-white border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all font-medium text-slate-900"
                       />
+                      <p className="text-[11px] text-amber-700">
+                        Agar ilmiy rahbaringiz ro‘yxatda bo‘lmasa, uning ism-sharifini aniq kiriting.
+                      </p>
                     </div>
                   )}
                 </div>

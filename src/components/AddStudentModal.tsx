@@ -17,6 +17,7 @@ import {
   Share2,
 } from 'lucide-react';
 import { DirectionSelect } from './DirectionSelect';
+import { SupervisorSelect } from './SupervisorSelect';
 import { registerStudentByAdmin } from '../services/authService';
 import { formatUzbekPhone } from '../lib/crypto';
 import type { UserAccount, SupervisorProfile, StudentProfile } from '../types';
@@ -393,33 +394,31 @@ export const AddStudentModal: React.FC<AddStudentModalProps> = ({
 
               {/* 5. Supervisor assignment */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                  Ilmiy rahbar biriktirish (Ixtiyoriy)
-                </label>
-                <select
+                <SupervisorSelect
+                  id="add-student-supervisor"
+                  label="Ilmiy rahbar biriktirish (Ixtiyoriy)"
+                  supervisors={supervisors}
                   value={supervisorId}
-                  onChange={(e) => {
-                    setSupervisorId(e.target.value);
-                    if (e.target.value) setCustomSupervisorName('');
+                  onChange={(val) => {
+                    setSupervisorId(val);
+                    if (val && val !== 'other') setCustomSupervisorName('');
                   }}
-                  className="w-full px-3.5 py-2.5 text-sm bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white transition-all font-medium cursor-pointer"
-                >
-                  <option value="">— Biriktirilmagan —</option>
-                  {supervisors.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.fullName} {s.academicDegree ? `(${s.academicDegree})` : ''} • {s.department || s.position}
-                    </option>
-                  ))}
-                </select>
+                  allowUnassigned
+                  unassignedOptionLabel="— Biriktirilmagan —"
+                  allowOther
+                  otherOptionLabel="Boshqa (Ro‘yxatda bo‘lmasa, qo‘lda kiritish)"
+                  customSupervisorName={customSupervisorName}
+                  placeholder="— Biriktirilmagan (Tanlash uchun bosing) —"
+                />
 
-                {!supervisorId && (
-                  <div className="mt-2">
+                {(!supervisorId || supervisorId === 'other') && (
+                  <div className="mt-2.5">
                     <input
                       type="text"
                       placeholder="Yoki ro‘yxatda yo‘q rahbar F.I.Sh. (ixtiyoriy)"
                       value={customSupervisorName}
                       onChange={(e) => setCustomSupervisorName(e.target.value)}
-                      className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 text-slate-700"
+                      className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 text-slate-800"
                     />
                   </div>
                 )}

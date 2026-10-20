@@ -22,6 +22,7 @@ import {
   UploadResult,
 } from '../lib/storage';
 import { DirectionSelect } from './DirectionSelect';
+import { SupervisorSelect } from './SupervisorSelect';
 
 interface EditProjectModalProps {
   isOpen: boolean;
@@ -313,21 +314,17 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
 
           {/* Supervisor Select */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Ilmiy rahbar (Ixtiyoriy)
-            </label>
-            <select
+            <SupervisorSelect
+              id="edit-project-supervisor"
+              label="Ilmiy rahbar (Ixtiyoriy)"
+              supervisors={supervisors}
               value={supervisorId}
-              onChange={e => setSupervisorId(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-900 focus:ring-1 focus:ring-blue-900 transition-colors cursor-pointer"
-            >
-              <option value="">Rahbar tanlanmagan</option>
-              {supervisors.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.position || 'Rahbar'}, {s.department || ''})
-                </option>
-              ))}
-            </select>
+              onChange={setSupervisorId}
+              allowUnassigned
+              unassignedOptionLabel="Rahbar tanlanmagan"
+              allowOther={false}
+              placeholder="Rahbar tanlanmagan (Tanlash uchun bosing)"
+            />
           </div>
 
           {/* Description */}

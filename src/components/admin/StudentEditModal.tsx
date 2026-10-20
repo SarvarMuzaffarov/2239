@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, GraduationCap, Save, AlertCircle, Check } from 'lucide-react';
 import { updateStudentProfileFull } from '../../services/firestoreService';
 import { OFFICIAL_DIRECTIONS } from '../../constants/directions';
+import { DirectionSelect } from '../DirectionSelect';
+import { SupervisorSelect } from '../SupervisorSelect';
 import type { StudentProfile, SupervisorProfile, UserAccount } from '../../types';
 
 interface Props {
@@ -145,53 +147,46 @@ export const StudentEditModal: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div>
+            <DirectionSelect
+              id="student-edit-direction"
+              label="Ta’lim yo‘nalishi"
+              required
+              value={direction}
+              onChange={setDirection}
+              placeholder="18 ta rasmiy yo‘nalishdan birini tanlang..."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Kurs</label>
+              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Kurs</label>
               <select
                 value={course}
                 onChange={e => setCourse(Number(e.target.value))}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white"
+                className="w-full min-h-[48px] px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-semibold focus:outline-none focus:ring-2 focus:ring-blue-900 focus:bg-white"
               >
-                <option value={1}>1-kurs</option>
-                <option value={2}>2-kurs</option>
-                <option value={3}>3-kurs</option>
-                <option value={4}>4-kurs</option>
+                <option value={1}>1-kurs (Bakalavr)</option>
+                <option value={2}>2-kurs (Bakalavr)</option>
+                <option value={3}>3-kurs (Bakalavr)</option>
+                <option value={4}>4-kurs (Bakalavr)</option>
+                <option value={5}>Magistratura</option>
               </select>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">Ilmiy rahbar</label>
-              <select
+              <SupervisorSelect
+                id="student-edit-supervisor"
+                label="Ilmiy rahbar"
+                supervisors={supervisors}
                 value={supervisorId}
-                onChange={e => setSupervisorId(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white font-medium"
-              >
-                <option value="">Biriktirilmagan</option>
-                {supervisors.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.fullName} ({s.position || 'Rahbar'})
-                  </option>
-                ))}
-              </select>
+                onChange={setSupervisorId}
+                allowUnassigned
+                unassignedOptionLabel="Biriktirilmagan"
+                allowOther={false}
+                placeholder="Biriktirilmagan (Tanlash uchun bosing)"
+              />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Ta’lim yo‘nalishi *
-            </label>
-            <select
-              value={direction}
-              onChange={e => setDirection(e.target.value)}
-              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white leading-relaxed"
-            >
-              {OFFICIAL_DIRECTIONS.map(dir => (
-                <option key={dir} value={dir}>
-                  {dir}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">

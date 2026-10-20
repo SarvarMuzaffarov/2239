@@ -4,6 +4,7 @@ import type { StudentProfile, SupervisorProfile, UserRole } from '../types';
 import { updateStudentFullByAdmin } from '../services/firestoreService';
 import { ProfilePhotoUploader } from './ProfilePhotoUploader';
 import { DirectionSelect } from './DirectionSelect';
+import { SupervisorSelect } from './SupervisorSelect';
 import { isValidDirection, canonicalizeDirection } from '../constants/directions';
 
 interface EditStudentModalProps {
@@ -275,23 +276,17 @@ export const EditStudentModal: React.FC<EditStudentModalProps> = ({
               <span>Biriktirilgan ilmiy rahbar</span>
             </h3>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                Ro‘yxatdan tanlang:
-              </label>
-              <select
-                value={supervisorId}
-                onChange={e => setSupervisorId(e.target.value)}
-                className="w-full min-h-[44px] px-3.5 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 shadow-xs"
-              >
-                <option value="">Biriktirilmagan</option>
-                {supervisors.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.fullName} ({s.department || s.position})
-                  </option>
-                ))}
-              </select>
-            </div>
+            <SupervisorSelect
+              label="Ro‘yxatdan tanlang"
+              supervisors={supervisors}
+              value={supervisorId}
+              onChange={val => {
+                setSupervisorId(val);
+                if (val) setCustomSupervisorName('');
+              }}
+              allowOther={false}
+              placeholder="Biriktirilmagan (tanlash uchun bosing...)"
+            />
 
             {!supervisorId && (
               <div>

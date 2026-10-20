@@ -107,6 +107,7 @@ import {
   DirectionExportRow,
 } from '../lib/excelExport';
 import { DirectionSelect } from './DirectionSelect';
+import { SupervisorSelect } from './SupervisorSelect';
 import {
   OFFICIAL_DIRECTIONS,
   canonicalizeDirection,
@@ -2155,17 +2156,20 @@ export const AdminDashboard: React.FC<Props> = ({
                 />
               </div>
 
-              <select
-                value={studentSupervisorFilter}
-                onChange={e => setStudentSupervisorFilter(e.target.value)}
-                className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-900 max-w-[180px] truncate"
-              >
-                <option value="all">Barcha rahbarlar</option>
-                <option value="unassigned">Rahbar biriktirilmagan</option>
-                {supervisors.map(sup => (
-                  <option key={sup.id} value={sup.id}>{sup.fullName}</option>
-                ))}
-              </select>
+              <div className="w-48 sm:w-56">
+                <SupervisorSelect
+                  id="admin-students-supervisor-filter"
+                  value={studentSupervisorFilter}
+                  onChange={setStudentSupervisorFilter}
+                  supervisors={supervisors}
+                  showAllOption
+                  allOptionLabel="Barcha rahbarlar"
+                  showUnassignedOption
+                  unassignedOptionLabel="Rahbar biriktirilmagan"
+                  allowOther={false}
+                  placeholder="Rahbar bo‘yicha..."
+                />
+              </div>
             </div>
           </div>
 
