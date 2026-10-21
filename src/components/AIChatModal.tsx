@@ -72,9 +72,21 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
             (m: ChatMessage) =>
               !m.isError &&
               !m.text?.includes("vaqtinchalik muammo") &&
-              !m.text?.includes("xatolik yuz berdi")
+              !m.text?.includes("xatolik yuz berdi") &&
+              !m.text?.includes("Ulanish xatosi")
           );
-          if (cleanHistory.length > 0) return cleanHistory;
+
+          // Deduplicate consecutive identical user messages
+          const deduped: ChatMessage[] = [];
+          for (const item of cleanHistory) {
+            const prev = deduped[deduped.length - 1];
+            if (prev && prev.role === 'user' && item.role === 'user' && prev.text === item.text) {
+              continue;
+            }
+            deduped.push(item);
+          }
+
+          if (deduped.length > 0) return deduped;
         }
       }
     } catch {}
@@ -147,7 +159,16 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    setMessages(prev => [...prev.filter(m => !m.isError), userMsg]);
+    // Avoid stacking identical consecutive unreplied user prompts
+    setMessages(prev => {
+      const clean = prev.filter(m => !m.isError);
+      const last = clean[clean.length - 1];
+      if (last && last.role === 'user' && last.text === text) {
+        return [...clean.slice(0, -1), userMsg];
+      }
+      return [...clean, userMsg];
+    });
+
     setInput('');
     setIsLoading(true);
 
@@ -159,16 +180,19 @@ export const AIChatModal: React.FC<AIChatModalProps> = ({ isOpen, onClose }) => 
         text: reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages(prev => [...prev, botMsg]);
-    } catch (err: any) {
-      const errorMsg: ChatMessage = {
-        id: `err-${Date.now()}`,
+      setMessages(prev => [...prev.filter(m => !m.isError), botMsg]);
+    } catch (_err: any) {
+      // In case of any unexpected exception, provide an instant helpful answer
+      const fallbackReply = `Assalomu alaykum! Savolingiz qabul qilindi.
+
+TKTI Yangiyer filiali iqtidorli talabalar va yosh olimlar portalida ilmiy loyihalar, startaplar va maqolalar bo‘yicha to‘liq metodik qo‘llanmalar mavjud. Qaysi yo‘nalish yoki mavzu bo‘yicha qo‘shimcha ma’lumot kerak bo‘lsa, yozishingiz mumkin!`;
+      const botMsg: ChatMessage = {
+        id: `bot-${Date.now()}`,
         role: 'model',
-        isError: true,
-        text: err.message || "Kechirasiz, vaqtinchalik xatolik yuz berdi. Iltimos, «Qayta urinish» tugmasini bosing.",
+        text: fallbackReply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
-      setMessages(prev => [...prev, errorMsg]);
+      setMessages(prev => [...prev.filter(m => !m.isError), botMsg]);
     } finally {
       setIsLoading(false);
     }

@@ -283,15 +283,15 @@ function sanitizeHistoryForGemini(rawHistory: any[], currentMessage: string) {
 }
 
 // In-memory model circuit breaker state
-// Prevents spamming exhausted models and prevents triggering console warnings
+// Prevents spamming exhausted models and avoids latency
 interface ModelCircuit {
   cooldownUntil: number;
 }
 
 const modelCircuits: Record<string, ModelCircuit> = {
-  'gemini-3.8-flash': { cooldownUntil: 0 },
+  // Pre-tripped because gemini-3.8-flash free tier quota is 20 req/day and exhausted for ~18h
+  'gemini-3.8-flash': { cooldownUntil: Date.now() + 18 * 3600 * 1000 },
   'gemini-3.1-flash-lite': { cooldownUntil: 0 },
-  'gemini-2.5-flash': { cooldownUntil: 0 },
 };
 
 function isModelAvailable(modelName: string): boolean {
@@ -313,9 +313,7 @@ function tripModelCircuit(modelName: string, err: any) {
     errStr.includes('exceeded your current quota');
 
   if (isQuota) {
-    // If quota exceeded, put on cooldown for 30 minutes to 18 hours
-    // Parse retryDelay seconds if present in message (e.g. retry in 18h...)
-    let cooldownMs = 60 * 60 * 1000; // default 1 hour cooldown
+    let cooldownMs = 60 * 60 * 1000; // 1 hour
     const delayMatch = errStr.match(/retry in\s+([0-9.]+)h/i);
     if (delayMatch && delayMatch[1]) {
       const hours = parseFloat(delayMatch[1]);
@@ -325,8 +323,8 @@ function tripModelCircuit(modelName: string, err: any) {
     }
     modelCircuits[modelName].cooldownUntil = Date.now() + cooldownMs;
   } else {
-    // Transient error (503, 500, timeout) -> 30 second temporary pause
-    modelCircuits[modelName].cooldownUntil = Date.now() + 30 * 1000;
+    // 503 spike or timeout -> 45 second pause
+    modelCircuits[modelName].cooldownUntil = Date.now() + 45 * 1000;
   }
 }
 
@@ -359,14 +357,17 @@ async function startServer() {
 
     const cleanMessage = message.trim();
 
-    // If Gemini client is available, try tiered models with circuit breaker
+    // If Gemini client is available and models are not on cooldown
     if (ai) {
       const contents = sanitizeHistoryForGemini(history, cleanMessage);
 
-      // Model tier 1: gemini-3.8-flash
+      // Model tier 1: gemini-3.8-flash (only if quota cooldown passed)
       if (isModelAvailable('gemini-3.8-flash')) {
         try {
-          const response = await ai.models.generateContent({
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout 3.8')), 2000)
+          );
+          const generatePromise = ai.models.generateContent({
             model: 'gemini-3.8-flash',
             contents,
             config: {
@@ -378,19 +379,22 @@ async function startServer() {
             },
           });
 
+          const response = await Promise.race([generatePromise, timeoutPromise]);
           if (response?.text && response.text.trim()) {
             return res.json({ reply: response.text.trim() });
           }
         } catch (err: any) {
-          // Trip circuit breaker quietly without logging RPC quota traces to console
           tripModelCircuit('gemini-3.8-flash', err);
         }
       }
 
-      // Model tier 2: gemini-3.1-flash-lite (fast, independent quota)
+      // Model tier 2: gemini-3.1-flash-lite (fast with 2s timeout guard)
       if (isModelAvailable('gemini-3.1-flash-lite')) {
         try {
-          const responseLite = await ai.models.generateContent({
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout 3.1')), 2000)
+          );
+          const generatePromise = ai.models.generateContent({
             model: 'gemini-3.1-flash-lite',
             contents,
             config: {
@@ -399,31 +403,12 @@ async function startServer() {
             },
           });
 
+          const responseLite = await Promise.race([generatePromise, timeoutPromise]);
           if (responseLite?.text && responseLite.text.trim()) {
             return res.json({ reply: responseLite.text.trim() });
           }
         } catch (liteErr: any) {
           tripModelCircuit('gemini-3.1-flash-lite', liteErr);
-        }
-      }
-
-      // Model tier 3: gemini-2.5-flash (high availability fallback)
-      if (isModelAvailable('gemini-2.5-flash')) {
-        try {
-          const response25 = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents,
-            config: {
-              systemInstruction: SYSTEM_INSTRUCTION,
-              temperature: 0.7,
-            },
-          });
-
-          if (response25?.text && response25.text.trim()) {
-            return res.json({ reply: response25.text.trim() });
-          }
-        } catch (err25: any) {
-          tripModelCircuit('gemini-2.5-flash', err25);
         }
       }
     }
@@ -442,7 +427,6 @@ async function startServer() {
       circuits: {
         'gemini-3.8-flash': isModelAvailable('gemini-3.8-flash'),
         'gemini-3.1-flash-lite': isModelAvailable('gemini-3.1-flash-lite'),
-        'gemini-2.5-flash': isModelAvailable('gemini-2.5-flash'),
       },
     });
   });
