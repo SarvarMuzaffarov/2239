@@ -111,17 +111,34 @@ export default async function handler(req: any, res: any) {
         },
       });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        contents: cleanMessage,
-        config: {
-          systemInstruction: SYSTEM_INSTRUCTION,
-          temperature: 0.7,
-        },
-      });
+      // Priority 1: gemini-3.5-flash-lite
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.5-flash-lite',
+          contents: cleanMessage,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            temperature: 0.7,
+          },
+        });
 
-      if (response?.text && response.text.trim()) {
-        return res.status(200).json({ reply: response.text.trim() });
+        if (response?.text && response.text.trim()) {
+          return res.status(200).json({ reply: response.text.trim() });
+        }
+      } catch (_e1) {
+        // Priority 2: gemini-flash-lite-latest
+        const responseBackup = await ai.models.generateContent({
+          model: 'gemini-flash-lite-latest',
+          contents: cleanMessage,
+          config: {
+            systemInstruction: SYSTEM_INSTRUCTION,
+            temperature: 0.7,
+          },
+        });
+
+        if (responseBackup?.text && responseBackup.text.trim()) {
+          return res.status(200).json({ reply: responseBackup.text.trim() });
+        }
       }
     } catch (_err) {
       // Fallback seamlessly to domain reply

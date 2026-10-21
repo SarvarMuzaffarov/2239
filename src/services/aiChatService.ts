@@ -195,9 +195,9 @@ export async function sendAiChatMessage(
   });
 
   try {
-    // 3.5 second fast timeout controller
+    // Allow up to 25 seconds for real LLM reasoning and generation
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3500);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const res = await fetch('/api/ai/chat', {
       method: 'POST',

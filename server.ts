@@ -283,15 +283,14 @@ function sanitizeHistoryForGemini(rawHistory: any[], currentMessage: string) {
 }
 
 // In-memory model circuit breaker state
-// Prevents spamming exhausted models and avoids latency
 interface ModelCircuit {
   cooldownUntil: number;
 }
 
 const modelCircuits: Record<string, ModelCircuit> = {
-  // Pre-tripped because gemini-3.8-flash free tier quota is 20 req/day and exhausted for ~18h
-  'gemini-3.8-flash': { cooldownUntil: Date.now() + 18 * 3600 * 1000 },
-  'gemini-3.1-flash-lite': { cooldownUntil: 0 },
+  'gemini-3.5-flash-lite': { cooldownUntil: 0 },
+  'gemini-flash-lite-latest': { cooldownUntil: 0 },
+  'gemini-3.5-flash': { cooldownUntil: 0 },
 };
 
 function isModelAvailable(modelName: string): boolean {
@@ -313,7 +312,7 @@ function tripModelCircuit(modelName: string, err: any) {
     errStr.includes('exceeded your current quota');
 
   if (isQuota) {
-    let cooldownMs = 60 * 60 * 1000; // 1 hour
+    let cooldownMs = 60 * 60 * 1000;
     const delayMatch = errStr.match(/retry in\s+([0-9.]+)h/i);
     if (delayMatch && delayMatch[1]) {
       const hours = parseFloat(delayMatch[1]);
@@ -323,8 +322,8 @@ function tripModelCircuit(modelName: string, err: any) {
     }
     modelCircuits[modelName].cooldownUntil = Date.now() + cooldownMs;
   } else {
-    // 503 spike or timeout -> 45 second pause
-    modelCircuits[modelName].cooldownUntil = Date.now() + 45 * 1000;
+    // 503 spike or timeout -> short 20 second pause
+    modelCircuits[modelName].cooldownUntil = Date.now() + 20 * 1000;
   }
 }
 
@@ -348,7 +347,7 @@ async function startServer() {
       })
     : null;
 
-  // AI Chat endpoint with professional circuit breaker & quiet failover cascade
+  // Real, dynamic AI Chat endpoint
   app.post(['/api/ai/chat', '/api/chat'], async (req, res) => {
     const { message, history } = req.body;
     if (!message || typeof message !== 'string' || !message.trim()) {
@@ -357,25 +356,21 @@ async function startServer() {
 
     const cleanMessage = message.trim();
 
-    // If Gemini client is available and models are not on cooldown
     if (ai) {
       const contents = sanitizeHistoryForGemini(history, cleanMessage);
 
-      // Model tier 1: gemini-3.8-flash (only if quota cooldown passed)
-      if (isModelAvailable('gemini-3.8-flash')) {
+      // Model priority 1: gemini-3.5-flash-lite (proven active, ultra fast & accurate)
+      if (isModelAvailable('gemini-3.5-flash-lite')) {
         try {
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout 3.8')), 2000)
+            setTimeout(() => reject(new Error('Timeout 3.5-flash-lite')), 25000)
           );
           const generatePromise = ai.models.generateContent({
-            model: 'gemini-3.8-flash',
+            model: 'gemini-3.5-flash-lite',
             contents,
             config: {
               systemInstruction: SYSTEM_INSTRUCTION,
               temperature: 0.7,
-              thinkingConfig: {
-                thinkingLevel: ThinkingLevel.LOW,
-              },
             },
           });
 
@@ -384,18 +379,18 @@ async function startServer() {
             return res.json({ reply: response.text.trim() });
           }
         } catch (err: any) {
-          tripModelCircuit('gemini-3.8-flash', err);
+          tripModelCircuit('gemini-3.5-flash-lite', err);
         }
       }
 
-      // Model tier 2: gemini-3.1-flash-lite (fast with 2s timeout guard)
-      if (isModelAvailable('gemini-3.1-flash-lite')) {
+      // Model priority 2: gemini-flash-lite-latest (high-availability backup)
+      if (isModelAvailable('gemini-flash-lite-latest')) {
         try {
           const timeoutPromise = new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error('Timeout 3.1')), 2000)
+            setTimeout(() => reject(new Error('Timeout flash-lite-latest')), 20000)
           );
           const generatePromise = ai.models.generateContent({
-            model: 'gemini-3.1-flash-lite',
+            model: 'gemini-flash-lite-latest',
             contents,
             config: {
               systemInstruction: SYSTEM_INSTRUCTION,
@@ -408,13 +403,36 @@ async function startServer() {
             return res.json({ reply: responseLite.text.trim() });
           }
         } catch (liteErr: any) {
-          tripModelCircuit('gemini-3.1-flash-lite', liteErr);
+          tripModelCircuit('gemini-flash-lite-latest', liteErr);
+        }
+      }
+
+      // Model priority 3: gemini-3.5-flash
+      if (isModelAvailable('gemini-3.5-flash')) {
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('Timeout 3.5-flash')), 20000)
+          );
+          const generatePromise = ai.models.generateContent({
+            model: 'gemini-3.5-flash',
+            contents,
+            config: {
+              systemInstruction: SYSTEM_INSTRUCTION,
+              temperature: 0.7,
+            },
+          });
+
+          const responseFlash = await Promise.race([generatePromise, timeoutPromise]);
+          if (responseFlash?.text && responseFlash.text.trim()) {
+            return res.json({ reply: responseFlash.text.trim() });
+          }
+        } catch (flashErr: any) {
+          tripModelCircuit('gemini-3.5-flash', flashErr);
         }
       }
     }
 
-    // Tier 4: Zero-downtime intelligent domain knowledge engine
-    // Returns immediately with 100% reliable, professional content in Uzbek
+    // Last-resort fallback only if internet/API is completely severed
     const domainReply = getDomainFallbackResponse(cleanMessage);
     return res.json({ reply: domainReply });
   });
@@ -425,8 +443,9 @@ async function startServer() {
       status: 'ok',
       time: new Date().toISOString(),
       circuits: {
-        'gemini-3.8-flash': isModelAvailable('gemini-3.8-flash'),
-        'gemini-3.1-flash-lite': isModelAvailable('gemini-3.1-flash-lite'),
+        'gemini-3.5-flash-lite': isModelAvailable('gemini-3.5-flash-lite'),
+        'gemini-flash-lite-latest': isModelAvailable('gemini-flash-lite-latest'),
+        'gemini-3.5-flash': isModelAvailable('gemini-3.5-flash'),
       },
     });
   });
