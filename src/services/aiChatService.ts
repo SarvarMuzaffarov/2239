@@ -211,9 +211,12 @@ export async function sendAiChatMessage(
     clearTimeout(timeoutId);
 
     if (res.ok) {
-      const data = await res.json().catch(() => null);
-      if (data?.reply && typeof data.reply === 'string' && data.reply.trim()) {
-        return data.reply.trim();
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const data = await res.json().catch(() => null);
+        if (data?.reply && typeof data.reply === 'string' && data.reply.trim()) {
+          return data.reply.trim();
+        }
       }
     }
   } catch (_e) {
