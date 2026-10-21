@@ -33,6 +33,8 @@ const StudentProfileModal = React.lazy(() =>
 const TopStudentsManageModal = React.lazy(() =>
   import('./components/TopStudentsManageModal').then(m => ({ default: m.TopStudentsManageModal }))
 );
+import { AIChatModal } from './components/AIChatModal';
+import { AIChatFloatingButton } from './components/AIChatFloatingButton';
 
 const DashboardLoadingFallback = () => (
   <div className="min-h-[50vh] flex flex-col items-center justify-center py-20 text-slate-500">
@@ -109,6 +111,7 @@ export default function App() {
   const [selectedPublicEvent, setSelectedPublicEvent] = useState<EventItem | null>(null);
   const [selectedPublicProject, setSelectedPublicProject] = useState<ProjectOrStartup | null>(null);
   const [selectedPublicAnnouncement, setSelectedPublicAnnouncement] = useState<Announcement | null>(null);
+  const [isAiChatOpen, setIsAiChatOpen] = useState<boolean>(false);
 
   const [confirmModalOptions, setConfirmModalOptions] = useState<{
     isOpen: boolean;
@@ -838,6 +841,7 @@ export default function App() {
           setAuthInitialTab('login');
           setAuthModalOpen(true);
         }}
+        onOpenAiChat={() => setIsAiChatOpen(true)}
         currentView={currentView}
         onToggleView={view => {
           setCurrentView(view);
@@ -1050,6 +1054,15 @@ export default function App() {
           </React.Suspense>
         )}
       </main>
+
+      {/* Floating Iqtidor AI Chat Button (Bottom Right) */}
+      <AIChatFloatingButton onClick={() => setIsAiChatOpen(true)} />
+
+      {/* Full-Featured Iqtidor AI Chat Modal */}
+      <AIChatModal
+        isOpen={isAiChatOpen}
+        onClose={() => setIsAiChatOpen(false)}
+      />
     </div>
   );
 }

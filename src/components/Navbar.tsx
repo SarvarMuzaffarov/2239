@@ -12,7 +12,8 @@ import {
   Bell,
   Send,
   Rocket,
-  Trophy
+  Trophy,
+  Sparkles,
 } from 'lucide-react';
 import type {
   UserAccount,
@@ -31,6 +32,7 @@ interface Props {
   onLogout: () => void;
   onOpenVerifyModal: (certId?: string) => void;
   onOpenLogin?: () => void;
+  onOpenAiChat?: () => void;
   currentView?: 'public' | 'dashboard';
   onToggleView?: (view: 'public' | 'dashboard') => void;
   onNavigateSection?: (sectionId: string) => void;
@@ -47,6 +49,7 @@ export const Navbar: React.FC<Props> = ({
   onLogout,
   onOpenVerifyModal,
   onOpenLogin,
+  onOpenAiChat,
   currentView = 'public',
   onToggleView,
   onNavigateSection,
@@ -171,7 +174,25 @@ export const Navbar: React.FC<Props> = ({
           </nav>
 
           {/* Desktop Right Controls */}
-          <div className="hidden sm:flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2.5">
+            {/* Iqtidor AI Header Button */}
+            {onOpenAiChat && (
+              <button
+                type="button"
+                onClick={onOpenAiChat}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl bg-gradient-to-r from-blue-950 via-blue-900 to-indigo-900 hover:from-blue-900 hover:to-indigo-800 text-white shadow-xs hover:shadow-md transition-all min-h-[38px] border border-blue-700/40 cursor-pointer group select-none"
+                title="Iqtidor AI — Ilmiy va platforma maslahatchisi"
+              >
+                <div className="w-5 h-5 rounded-lg bg-gradient-to-tr from-amber-400 to-amber-200 text-blue-950 flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform shadow-2xs">
+                  <Sparkles className="w-3 h-3 fill-amber-950/20" />
+                </div>
+                <span>Iqtidor AI</span>
+                <span className="hidden xl:inline-block px-1.5 py-0.5 text-[9px] font-bold bg-white/15 text-amber-300 rounded-md">
+                  AI Yordamchi
+                </span>
+              </button>
+            )}
+
             {/* If logged in: Portal/Dashboard switch */}
             {currentUser && onToggleView && (
               <button
@@ -350,6 +371,30 @@ export const Navbar: React.FC<Props> = ({
 
             {/* Navigation links */}
             <div className="grid grid-cols-1 gap-1 pt-1 text-xs font-semibold text-slate-700">
+              {onOpenAiChat && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAiChat();
+                  }}
+                  className="w-full text-left p-3 mb-1 rounded-2xl bg-gradient-to-r from-blue-950 via-blue-900 to-indigo-900 text-white flex items-center justify-between gap-3 shadow-sm cursor-pointer select-none"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-400 to-amber-200 text-blue-950 flex items-center justify-center shrink-0 shadow-xs">
+                      <Sparkles className="w-4 h-4 fill-amber-950/20" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold block leading-tight">Iqtidor AI Yordamchi</span>
+                      <span className="text-[10px] text-amber-300 block leading-tight">Ilmiy maslahatchi va platforma gidi</span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-white/15 text-white rounded-lg">
+                    Ochish
+                  </span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => handleNavClick('top')}
