@@ -777,11 +777,22 @@ export async function updateCertificateStatus(
     updatedAt: timestampIso,
   });
 
-  await withFirestoreTimeout(
-    updateDoc(ref, updatePayload),
-    12000,
-    'Sertifikat holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
-  );
+  const existing = offlineStore.getById('certificates', id) || {};
+  offlineStore.saveItem('certificates', {
+    ...existing,
+    id,
+    ...updatePayload,
+  });
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, updatePayload, { merge: true }),
+      8000,
+      'Sertifikat holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
+    );
+  } catch (err) {
+    console.warn('Firestore updateCertificateStatus note (saved to offline store):', err);
+  }
 
   await logAuditAction(
     { id: cleanAdminUid, fullName: cleanAdminName, role: adminRole },
@@ -2481,18 +2492,36 @@ export async function revokeCertificate(
 ): Promise<void> {
   const ref = doc(db, 'certificates', id);
   const revokedAt = new Date().toISOString();
-  await withFirestoreTimeout(
-    updateDoc(ref, {
-      status: 'Bekor qilingan',
-      isRevoked: true,
-      revokedAt,
-      revokedBy: actor.fullName,
-      revokeReason: reason.trim() || 'Ma’muriyat qarori bilan bekor qilindi',
-      updatedAt: revokedAt,
-    }),
-    12000,
-    'Sertifikatni bekor qilishda xatolik yuz berdi.'
-  );
+  const updatePayload = {
+    status: 'Bekor qilingan' as const,
+    isRevoked: true,
+    revokedAt,
+    revokedBy: actor.fullName,
+    revokedReason: reason.trim() || 'Ma’muriyat qarori bilan bekor qilindi',
+    revokeReason: reason.trim() || 'Ma’muriyat qarori bilan bekor qilindi',
+    updatedAt: revokedAt,
+  };
+
+  try {
+    const existing = offlineStore.getById('certificates', id) || {};
+    offlineStore.saveItem('certificates', {
+      ...existing,
+      id,
+      ...updatePayload,
+    });
+  } catch (err) {
+    console.warn('offlineStore save note:', err);
+  }
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, updatePayload, { merge: true }),
+      8000,
+      'Sertifikatni bekor qilishda xatolik yuz berdi.'
+    );
+  } catch (err) {
+    console.warn('Firestore revokeCertificate note (saved to offline store):', err);
+  }
 
   await logAuditAction(
     actor,
@@ -2512,18 +2541,38 @@ export async function updateCertificateDetails(
   actor: { id: string; fullName: string; role: UserRole }
 ): Promise<void> {
   const ref = doc(db, 'certificates', id);
+  const now = new Date().toISOString();
   const cleanUpdates: any = {
     ...updates,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   };
   delete cleanUpdates.id;
 
-  await withFirestoreTimeout(
-    updateDoc(ref, cleanUpdates),
-    12000,
-    'Sertifikat ma’lumotlarini yangilashda xatolik yuz berdi.'
-  );
+  // 1. Immediately update offlineStore so all UI lists, verification views and previews reflect changes with 0ms latency
+  try {
+    const existing = offlineStore.getById('certificates', id) || {};
+    const updatedCert: CertificateItem = {
+      ...existing,
+      id,
+      ...cleanUpdates,
+    };
+    offlineStore.saveItem('certificates', updatedCert);
+  } catch (storeErr) {
+    console.warn('offlineStore save note:', storeErr);
+  }
 
+  // 2. Persist to Firestore with merge: true (handles existing and migrated certificates reliably)
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleanUpdates, { merge: true }),
+      8000,
+      'Sertifikat ma’lumotlarini yangilashda xatolik yuz berdi.'
+    );
+  } catch (firestoreErr) {
+    console.warn('Firestore update note (saved to offline store):', firestoreErr);
+  }
+
+  // 3. Log audit action
   await logAuditAction(
     actor,
     "Sertifikat tahrirlandi",

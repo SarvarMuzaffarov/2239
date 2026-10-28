@@ -6234,7 +6234,14 @@ export const AdminDashboard: React.FC<Props> = ({
             setIsEditCertModalOpen(false);
             setEditingCertificate(null);
           }}
-          onSaveSuccess={() => {}}
+          onSuccess={() => {
+            setIsEditCertModalOpen(false);
+            setEditingCertificate(null);
+          }}
+          onSaveSuccess={() => {
+            setIsEditCertModalOpen(false);
+            setEditingCertificate(null);
+          }}
           onNotify={onNotify}
         />
       )}

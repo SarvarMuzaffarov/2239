@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { X, Award, Save, AlertCircle, Check, RefreshCw } from 'lucide-react';
 import { updateCertificateDetails } from '../../services/firestoreService';
 import type { CertificateItem, UserAccount } from '../../types';
@@ -11,8 +11,10 @@ interface Props {
   isOpen: boolean;
   certificate: CertificateItem | null;
   actor: UserAccount;
-  onSuccess: () => void;
+  onSuccess?: () => void;
+  onSaveSuccess?: () => void;
   onClose: () => void;
+  onNotify?: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
 export const CertificateEditModal: React.FC<Props> = ({
@@ -20,7 +22,9 @@ export const CertificateEditModal: React.FC<Props> = ({
   certificate,
   actor,
   onSuccess,
+  onSaveSuccess,
   onClose,
+  onNotify,
 }) => {
   if (!isOpen || !certificate) return null;
 
@@ -46,6 +50,32 @@ export const CertificateEditModal: React.FC<Props> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  // Keep form values in sync with the selected certificate
+  useEffect(() => {
+    if (certificate) {
+      setCertNumber(certificate.certificateNumber || '');
+      setDocType(certificate.documentType || 'sertifikat');
+      setDesignId((certificate.designId as CertificateDesignId) || 'modern_sidebar');
+      setBackgroundPattern((certificate.backgroundPattern as BackgroundPatternId) || 'dots_grid');
+      setTitle(certificate.title || '');
+      setSubtitle(certificate.subtitle || '');
+      setStudentName(certificate.studentName || '');
+      setStudentDirection(certificate.studentDirection || '');
+      setEventTitle(certificate.eventTitle || '');
+      setCompetitionName(certificate.competitionName || '');
+      setNomination(certificate.nomination || '');
+      setDescription(certificate.description || '');
+      setIssueDate(certificate.issueDate || '');
+      setSignatoryName(certificate.signatoryName || 'Xakimov Zafar Tulyaganovich');
+      setSignatoryRole(certificate.signatoryRole || 'TKTI Yangiyer filiali direktori');
+      setConfirmationText(certificate.confirmationText || '');
+      setFooterText(certificate.footerText || '');
+      setStatus(certificate.status || 'Tasdiqlangan');
+      setError('');
+      setSuccessMsg('');
+    }
+  }, [certificate, isOpen]);
 
   const allCerts = useMemo(() => {
     return (offlineStore.get('certificates') as CertificateItem[]).filter(c => c.id !== certificate.id);
@@ -100,10 +130,12 @@ export const CertificateEditModal: React.FC<Props> = ({
       );
 
       setSuccessMsg("Sertifikat ma'lumotlari muvaffaqiyatli saqlandi!");
+      onNotify?.('success', "Sertifikat ma'lumotlari muvaffaqiyatli saqlandi!");
       setTimeout(() => {
-        onSuccess();
+        onSuccess?.();
+        onSaveSuccess?.();
         onClose();
-      }, 1000);
+      }, 700);
     } catch (err: any) {
       setError(err.message || "Sertifikatni saqlashda xatolik yuz berdi.");
     } finally {
