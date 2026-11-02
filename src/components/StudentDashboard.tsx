@@ -24,8 +24,10 @@ import {
   Trash2,
   Pencil,
   Languages,
+  BookOpen,
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
+import { ClubsScheduleView } from './ClubsScheduleView';
 import {
   uploadPdfDocument,
   validatePdfFile,
@@ -66,6 +68,8 @@ import type {
   LanguageCertificate,
   EventItem,
   Announcement,
+  ClubItem,
+  ClubEnrollment,
 } from '../types';
 
 interface Props {
@@ -78,6 +82,8 @@ interface Props {
   languageCertificates?: LanguageCertificate[];
   events: EventItem[];
   announcements: Announcement[];
+  clubs?: ClubItem[];
+  enrollments?: ClubEnrollment[];
   onNotify: (type: 'success' | 'error' | 'info', msg: string) => void;
   onOpenPdf: (url: string, name?: string, size?: number, title?: string) => void;
   onUpdateCurrentUser?: (updated: UserAccount) => void;
@@ -88,6 +94,8 @@ interface Props {
     isDestructive?: boolean;
     onConfirm: () => Promise<void> | void;
   }) => void;
+  onEnrollInClub?: (club: ClubItem) => void;
+  onUnenrollClub?: (clubId: string) => void;
 }
 
 type TabType =
@@ -98,6 +106,7 @@ type TabType =
   | 'achievements'
   | 'certificates'
   | 'language-certificates'
+  | 'clubs'
   | 'events'
   | 'announcements'
   | 'settings';
@@ -112,10 +121,14 @@ export const StudentDashboard: React.FC<Props> = ({
   languageCertificates = [],
   events = [],
   announcements = [],
+  clubs = [],
+  enrollments = [],
   onNotify,
   onOpenPdf,
   onUpdateCurrentUser,
   onConfirmModal,
+  onEnrollInClub,
+  onUnenrollClub,
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
@@ -916,6 +929,7 @@ export const StudentDashboard: React.FC<Props> = ({
             <option value="certificates">🎖️ Sertifikatlarim ({myCertificates.length})</option>
             <option value="language-certificates">🌐 Til sertifikatlari ({myLanguageCertificates.length})</option>
             <option value="events">📅 Tadbirlar ({events.length})</option>
+            <option value="clubs">📚 To‘garaklar jadvali ({clubs.length})</option>
             <option value="announcements">🔔 E'lonlar ({announcements.length})</option>
           </select>
         </div>
@@ -931,6 +945,7 @@ export const StudentDashboard: React.FC<Props> = ({
           { id: 'achievements', label: `Yutuqlarim (${myAchievements.length})`, icon: Trophy },
           { id: 'certificates', label: `Sertifikatlarim (${myCertificates.length})`, icon: Award },
           { id: 'language-certificates', label: `Til sertifikatlari (${myLanguageCertificates.length})`, icon: Languages },
+          { id: 'clubs', label: `To‘garaklar (${clubs.length})`, icon: BookOpen },
           { id: 'events', label: `Tadbirlar (${events.length})`, icon: Calendar },
           { id: 'announcements', label: `E'lonlar (${announcements.length})`, icon: Bell },
         ].map(tab => {
@@ -1901,6 +1916,20 @@ export const StudentDashboard: React.FC<Props> = ({
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ================= 9.5. CLUBS TAB ================= */}
+      {activeTab === 'clubs' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <ClubsScheduleView
+            clubs={clubs}
+            enrollments={enrollments}
+            currentUser={currentUser}
+            studentProfile={studentProfile}
+            onEnroll={onEnrollInClub}
+            onUnenroll={onUnenrollClub}
+          />
         </div>
       )}
 

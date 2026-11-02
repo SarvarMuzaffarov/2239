@@ -13,6 +13,7 @@ import {
   Send,
   Rocket,
   Trophy,
+  BookOpen,
 } from 'lucide-react';
 import type {
   UserAccount,
@@ -152,6 +153,13 @@ export const Navbar: React.FC<Props> = ({
               className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
             >
               Yo‘nalishlar
+            </button>
+            <button
+              type="button"
+              onClick={() => handleNavClick('togaraklar')}
+              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+            >
+              To‘garaklar
             </button>
             <button
               type="button"
@@ -397,6 +405,15 @@ export const Navbar: React.FC<Props> = ({
               >
                 <GraduationCap className="w-4 h-4 text-purple-600" />
                 <span>18 ta ta'lim yo‘nalishlari</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleNavClick('togaraklar')}
+                className="w-full text-left px-3.5 py-2.5 rounded-xl hover:bg-slate-100 flex items-center gap-2.5 cursor-pointer"
+              >
+                <BookOpen className="w-4 h-4 text-indigo-600" />
+                <span>To‘garaklar jadvali (36 ta)</span>
               </button>
 
               <button

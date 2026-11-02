@@ -60,6 +60,10 @@ import {
   subscribeAnnouncements,
   subscribeUsers,
   subscribeAuditLogs,
+  subscribeClubs,
+  subscribeClubEnrollments,
+  enrollInClub,
+  unenrollFromClub,
 } from './services/firestoreService';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from './lib/firebase';
@@ -77,6 +81,8 @@ import type {
   EventItem,
   Announcement,
   AuditLog,
+  ClubItem,
+  ClubEnrollment,
 } from './types';
 
 export default function App() {
@@ -95,6 +101,8 @@ export default function App() {
   const [events, setEvents] = useState<EventItem[]>(() => offlineStore.get('events').filter(e => !e.isDeleted));
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => offlineStore.get('announcements').filter(a => !a.isDeleted));
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => offlineStore.get('auditLogs'));
+  const [clubs, setClubs] = useState<ClubItem[]>(() => offlineStore.get('clubs'));
+  const [clubEnrollments, setClubEnrollments] = useState<ClubEnrollment[]>(() => offlineStore.get('clubEnrollments'));
 
   // Notifications & Modals
   const [toast, setToast] = useState<{
@@ -399,6 +407,8 @@ export default function App() {
         'projects': 'loyihalar',
         'yonalishlar': 'yonalishlar',
         'directions': 'yonalishlar',
+        'togaraklar': 'togaraklar',
+        'clubs': 'togaraklar',
         'yutuqlar': 'yutuqlar',
         'achievements': 'yutuqlar',
         'faol-talabalar': 'faol-talabalar',
@@ -549,9 +559,11 @@ export default function App() {
 
   // Subscriptions to live real-time collections
   useEffect(() => {
-    // 1. Announcements & Events are lightweight and relevant for all visitors
+    // 1. Announcements, Events & Clubs are lightweight and relevant for all visitors
     const unsubEvents = subscribeEvents(setEvents);
     const unsubAnnouncements = subscribeAnnouncements(setAnnouncements);
+    const unsubClubs = subscribeClubs(setClubs);
+    const unsubClubEnrollments = subscribeClubEnrollments(setClubEnrollments);
 
     // 2. Subscriptions management:
     // When not logged in (public landing page):
@@ -610,6 +622,8 @@ export default function App() {
     return () => {
       unsubEvents();
       unsubAnnouncements();
+      unsubClubs();
+      unsubClubEnrollments();
       unsubStudents();
       unsubSupervisors();
       unsubProjects();
@@ -650,6 +664,44 @@ export default function App() {
           (s.phone && normalizePhone(s.phone) === normalizePhone(currentUser.phone))
       ) || null
     : null;
+
+  const handleEnrollInClub = async (club: ClubItem) => {
+    if (!currentUser) {
+      setAuthInitialTab('login');
+      setAuthModalOpen(true);
+      notify('info', 'To‘garakka a\'zo bo‘lish uchun avval tizimga kiring.');
+      return;
+    }
+
+    try {
+      const student = currentStudentProfile || {
+        id: currentUser.id,
+        fullName: currentUser.fullName,
+        phone: currentUser.phone,
+      };
+      await enrollInClub(club.id, {
+        id: student.id,
+        fullName: student.fullName,
+        phone: (student as any).phone || currentUser.phone,
+        group: (student as any).group || '',
+        facultyOrField: (student as any).facultyOrField || '',
+        course: (student as any).course || 1,
+      });
+      notify('success', `«${club.name}» to‘garagiga muvaffaqiyatli a'zo bo‘ldingiz!`);
+    } catch (err: any) {
+      notify('error', err?.message || 'To‘garakka yozilishda xatolik.');
+    }
+  };
+
+  const handleUnenrollClub = async (clubId: string) => {
+    if (!currentUser) return;
+    try {
+      await unenrollFromClub(clubId, currentUser.id);
+      notify('info', 'To‘garak a\'zoligi bekor qilindi.');
+    } catch (err: any) {
+      notify('error', err?.message || 'A\'zolikni bekor qilishda xatolik.');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800 selection:bg-blue-900 selection:text-white">
@@ -905,6 +957,10 @@ export default function App() {
                 certificates={certificates}
                 events={events}
                 announcements={announcements}
+                clubs={clubs}
+                enrollments={clubEnrollments}
+                onEnrollInClub={handleEnrollInClub}
+                onUnenrollClub={handleUnenrollClub}
                 isLoading={isAuthLoading}
                 currentUser={currentUser}
                 onOpenLogin={() => {
@@ -960,6 +1016,10 @@ export default function App() {
                 languageCertificates={languageCertificates}
                 events={events}
                 announcements={announcements}
+                clubs={clubs}
+                enrollments={clubEnrollments}
+                onEnrollInClub={handleEnrollInClub}
+                onUnenrollClub={handleUnenrollClub}
                 onNotify={notify}
                 onUpdateCurrentUser={handleUpdateCurrentUser}
                 onOpenPdf={(url, name, size, title) =>
@@ -996,6 +1056,8 @@ export default function App() {
                 certificates={certificates}
                 languageCertificates={languageCertificates}
                 events={events}
+                clubs={clubs}
+                enrollments={clubEnrollments}
                 onNotify={notify}
                 onUpdateCurrentUser={handleUpdateCurrentUser}
                 onOpenStudentProfile={handleOpenStudentProfile}
@@ -1022,6 +1084,8 @@ export default function App() {
                 languageCertificates={languageCertificates}
                 events={events}
                 announcements={announcements}
+                clubs={clubs}
+                enrollments={clubEnrollments}
                 auditLogs={auditLogs}
                 onNotify={notify}
                 onRefreshUsers={() => setAllUsers(offlineStore.get('users'))}

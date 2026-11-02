@@ -36,7 +36,10 @@ import type {
   UserAccount,
   UserRole,
   TopStudentAssignment,
+  ClubItem,
+  ClubEnrollment,
 } from '../types';
+import { INITIAL_CLUBS_DATA } from '../data/initialClubsData';
 import {
   generateSalt,
   hashPassword,
@@ -3503,6 +3506,303 @@ export async function saveTopActiveStudents(
     );
   } catch (err: any) {
     console.warn('Could not log audit action for top students:', err?.message || err);
+  }
+}
+
+// ----------------- EXTRACURRICULAR CLUBS (TO'GARAKLAR) -----------------
+
+export function subscribeClubs(onUpdate: (items: ClubItem[]) => void): Unsubscribe {
+  const unsubLocal = offlineStore.subscribe('clubs', list => {
+    const active = list.filter(c => !c.isDeleted);
+    active.sort((a, b) => (a.orderNumber || 999) - (b.orderNumber || 999));
+    onUpdate(active);
+  });
+
+  let unsubFirestore = () => {};
+  try {
+    const colRef = collection(db, 'clubs');
+    unsubFirestore = onSnapshot(
+      colRef,
+      snapshot => {
+        if (!snapshot.empty) {
+          const list: ClubItem[] = [];
+          snapshot.forEach(docSnap => {
+            list.push({ id: docSnap.id, ...docSnap.data() } as ClubItem);
+          });
+          offlineStore.syncFromFirestore('clubs', list);
+        } else {
+          // If Firestore collection is empty, seed it with the official 36 clubs!
+          seedClubsToFirestoreIfEmpty().catch(err => {
+            console.warn('Auto-seed clubs notice:', err);
+          });
+        }
+      },
+      error => {
+        handleSubscriptionError('clubs', error);
+      }
+    );
+  } catch (err) {
+    handleSubscriptionError('clubs', err);
+  }
+
+  return () => {
+    unsubLocal();
+    unsubFirestore();
+  };
+}
+
+export function subscribeClubEnrollments(onUpdate: (items: ClubEnrollment[]) => void): Unsubscribe {
+  const unsubLocal = offlineStore.subscribe('clubEnrollments', list => {
+    const active = list.filter(e => e.status !== 'Bekor qilingan');
+    onUpdate(active);
+  });
+
+  let unsubFirestore = () => {};
+  try {
+    const colRef = collection(db, 'clubEnrollments');
+    unsubFirestore = onSnapshot(
+      colRef,
+      snapshot => {
+        if (!snapshot.empty) {
+          const list: ClubEnrollment[] = [];
+          snapshot.forEach(docSnap => {
+            list.push({ id: docSnap.id, ...docSnap.data() } as ClubEnrollment);
+          });
+          offlineStore.syncFromFirestore('clubEnrollments', list);
+        }
+      },
+      error => {
+        handleSubscriptionError('clubEnrollments', error);
+      }
+    );
+  } catch (err) {
+    handleSubscriptionError('clubEnrollments', err);
+  }
+
+  return () => {
+    unsubLocal();
+    unsubFirestore();
+  };
+}
+
+export async function createClub(
+  data: Omit<ClubItem, 'id' | 'createdAt' | 'enrolledStudentsCount'>,
+  actor?: { id: string; fullName: string; role: UserRole }
+): Promise<string> {
+  const ref = doc(collection(db, 'clubs'));
+  const nowIso = new Date().toISOString();
+  const item: ClubItem = {
+    ...data,
+    id: ref.id,
+    enrolledStudentsCount: 0,
+    enrolledStudentIds: [],
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+
+  const cleaned = removeUndefinedFields(item);
+  offlineStore.saveItem('clubs', cleaned);
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleaned),
+      5000,
+      "To'garak ma'lumotlarini saqlashda vaqt tugadi."
+    );
+  } catch (err) {
+    console.warn('Firestore createClub note (saved locally):', err);
+  }
+
+  if (actor) {
+    await logAuditAction(
+      actor,
+      "Yangi to'garak yaratish",
+      'clubs',
+      ref.id,
+      `Yangi to'garak qo'shildi: ${item.name} (${item.scheduleDescription})`
+    );
+  }
+
+  return ref.id;
+}
+
+export async function updateClub(
+  id: string,
+  updates: Partial<ClubItem>,
+  actor?: { id: string; fullName: string; role: UserRole }
+): Promise<void> {
+  const ref = doc(db, 'clubs', id);
+  const existing = offlineStore.getById('clubs', id) as ClubItem | undefined;
+
+  const cleanedUpdates = removeUndefinedFields({
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  });
+
+  if (existing) {
+    offlineStore.saveItem('clubs', {
+      ...existing,
+      ...cleanedUpdates,
+    });
+  }
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleanedUpdates, { merge: true }),
+      5000,
+      "To'garak ma'lumotlarini yangilashda vaqt tugadi."
+    );
+  } catch (err) {
+    console.warn('Firestore updateClub note (saved locally):', err);
+  }
+
+  if (actor) {
+    await logAuditAction(
+      actor,
+      "To'garakni tahrirlash",
+      'clubs',
+      id,
+      `To'garak (${updates.name || existing?.name || id}) tahrirlandi.`
+    );
+  }
+}
+
+export async function deleteClub(
+  id: string,
+  actor: { id: string; fullName: string; role: UserRole }
+): Promise<void> {
+  await softDeleteDocument('clubs', id, "To'garak", actor);
+}
+
+export async function enrollInClub(
+  clubId: string,
+  student: {
+    id: string;
+    fullName: string;
+    phone?: string;
+    group?: string;
+    facultyOrField?: string;
+    course?: number;
+  }
+): Promise<string> {
+  const existingClub = (offlineStore.getById('clubs', clubId) as ClubItem | undefined) ||
+    INITIAL_CLUBS_DATA.find(c => c.id === clubId);
+
+  const clubName = existingClub?.name || "To'garak";
+  const ref = doc(collection(db, 'clubEnrollments'));
+  const nowIso = new Date().toISOString();
+
+  const enrollment: ClubEnrollment = {
+    id: ref.id,
+    clubId,
+    clubName,
+    studentId: student.id,
+    studentName: student.fullName,
+    studentPhone: student.phone || '',
+    studentGroup: student.group || '',
+    studentFaculty: student.facultyOrField || '',
+    studentCourse: student.course,
+    enrolledAt: nowIso,
+    status: 'Faol',
+  };
+
+  const cleanedEnrollment = removeUndefinedFields(enrollment);
+  offlineStore.saveItem('clubEnrollments', cleanedEnrollment);
+
+  // Update club attendee count & IDs
+  if (existingClub) {
+    const currentIds = Array.isArray(existingClub.enrolledStudentIds) ? existingClub.enrolledStudentIds : [];
+    if (!currentIds.includes(student.id)) {
+      const updatedIds = [...currentIds, student.id];
+      const updatedClub = {
+        ...existingClub,
+        enrolledStudentIds: updatedIds,
+        enrolledStudentsCount: updatedIds.length,
+        updatedAt: nowIso,
+      };
+      offlineStore.saveItem('clubs', updatedClub);
+
+      try {
+        const clubRef = doc(db, 'clubs', clubId);
+        await setDoc(clubRef, {
+          enrolledStudentIds: updatedIds,
+          enrolledStudentsCount: updatedIds.length,
+          updatedAt: nowIso,
+        }, { merge: true });
+      } catch (err) {
+        console.warn('Firestore update club participant count note:', err);
+      }
+    }
+  }
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleanedEnrollment),
+      5000,
+      "To'garakka yozilishda vaqt tugadi."
+    );
+  } catch (err) {
+    console.warn('Firestore enrollInClub note (saved locally):', err);
+  }
+
+  return ref.id;
+}
+
+export async function unenrollFromClub(clubId: string, studentId: string): Promise<void> {
+  // 1. Remove or cancel from clubEnrollments
+  const allEnrollments = offlineStore.get('clubEnrollments');
+  const target = allEnrollments.find(e => e.clubId === clubId && e.studentId === studentId);
+  if (target) {
+    const updated = { ...target, status: 'Bekor qilingan' as const };
+    offlineStore.saveItem('clubEnrollments', updated);
+    try {
+      const eRef = doc(db, 'clubEnrollments', target.id);
+      await setDoc(eRef, { status: 'Bekor qilingan' }, { merge: true });
+    } catch {}
+  }
+
+  // 2. Remove from club's attendee array
+  const existingClub = offlineStore.getById('clubs', clubId) as ClubItem | undefined;
+  if (existingClub) {
+    const currentIds = (existingClub.enrolledStudentIds || []).filter(id => id !== studentId);
+    const updatedClub = {
+      ...existingClub,
+      enrolledStudentIds: currentIds,
+      enrolledStudentsCount: currentIds.length,
+      updatedAt: new Date().toISOString(),
+    };
+    offlineStore.saveItem('clubs', updatedClub);
+
+    try {
+      const cRef = doc(db, 'clubs', clubId);
+      await setDoc(cRef, {
+        enrolledStudentIds: currentIds,
+        enrolledStudentsCount: currentIds.length,
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+    } catch {}
+  }
+}
+
+export async function seedClubsToFirestoreIfEmpty(): Promise<void> {
+  try {
+    const colRef = collection(db, 'clubs');
+    const snap = await getDocs(colRef);
+    const existingDocIds = new Set(snap.docs.map(d => d.id));
+
+    // Batch write any missing initial clubs (e.g. clubs #37..#43)
+    const missingClubs = INITIAL_CLUBS_DATA.filter(c => !existingDocIds.has(c.id));
+    if (missingClubs.length === 0) return;
+
+    const batch = writeBatch(db);
+    for (const club of missingClubs) {
+      const docRef = doc(db, 'clubs', club.id);
+      batch.set(docRef, removeUndefinedFields(club), { merge: true });
+    }
+    await batch.commit();
+    console.log(`${missingClubs.length} ta yangi rasmiy to'garak Firestore'ga muvaffaqiyatli saqlandi.`);
+  } catch (err) {
+    console.warn('seedClubsToFirestoreIfEmpty note:', err);
   }
 }
 

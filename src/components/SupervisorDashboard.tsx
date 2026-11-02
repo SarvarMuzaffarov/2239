@@ -19,9 +19,11 @@ import {
   Loader2,
   Check,
   X,
+  BookOpen,
 } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 import { ProfilePhotoUploader } from './ProfilePhotoUploader';
+import { ClubsScheduleView } from './ClubsScheduleView';
 import {
   updateSupervisorSelfProfilePhoto,
   updateProjectStatus,
@@ -41,6 +43,8 @@ import type {
   CertificateItem,
   LanguageCertificate,
   EventItem,
+  ClubItem,
+  ClubEnrollment,
 } from '../types';
 
 interface Props {
@@ -52,13 +56,15 @@ interface Props {
   certificates?: CertificateItem[];
   languageCertificates?: LanguageCertificate[];
   events?: EventItem[];
+  clubs?: ClubItem[];
+  enrollments?: ClubEnrollment[];
   onNotify?: (type: 'success' | 'error' | 'info', msg: string) => void;
   onOpenPdf: (url: string, name?: string, size?: number, title?: string) => void;
   onOpenStudentProfile?: (studentId: string) => void;
   onUpdateCurrentUser?: (updated: UserAccount) => void;
 }
 
-type TabType = 'profile' | 'students' | 'projects' | 'startups' | 'achievements';
+type TabType = 'profile' | 'students' | 'projects' | 'startups' | 'achievements' | 'clubs';
 
 export const SupervisorDashboard: React.FC<Props> = ({
   currentUser,
@@ -69,6 +75,8 @@ export const SupervisorDashboard: React.FC<Props> = ({
   certificates = [],
   languageCertificates = [],
   events = [],
+  clubs = [],
+  enrollments = [],
   onNotify,
   onOpenPdf,
   onOpenStudentProfile,
@@ -290,6 +298,7 @@ export const SupervisorDashboard: React.FC<Props> = ({
             <option value="projects">📂 Talabalar loyihalari ({myProjects.length})</option>
             <option value="startups">🚀 Startaplar ({myStartups.length})</option>
             <option value="achievements">🏆 Yutuqlar ({myAchievements.length})</option>
+            <option value="clubs">📚 To‘garaklar jadvali ({clubs.length})</option>
             <option value="profile">👤 Profil ma'lumotlarim</option>
           </select>
         </div>
@@ -302,6 +311,7 @@ export const SupervisorDashboard: React.FC<Props> = ({
           { id: 'projects', label: `Talabalar loyihalari (${myProjects.length})`, icon: FolderGit2 },
           { id: 'startups', label: `Startaplar (${myStartups.length})`, icon: Rocket },
           { id: 'achievements', label: `Yutuqlar (${myAchievements.length})`, icon: Trophy },
+          { id: 'clubs', label: `To‘garaklar (${clubs.length})`, icon: BookOpen },
           { id: 'profile', label: 'Profil ma\'lumotlarim', icon: User },
         ].map(tab => {
           const Icon = tab.icon;
@@ -805,6 +815,18 @@ export const SupervisorDashboard: React.FC<Props> = ({
               <span className="text-sm font-semibold text-slate-900">{myProfile?.department || 'Kafedra belgilanmagan'}</span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* CLUBS TAB */}
+      {activeTab === 'clubs' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <ClubsScheduleView
+            clubs={clubs}
+            enrollments={enrollments}
+            currentUser={currentUser}
+            canManage={false}
+          />
         </div>
       )}
 

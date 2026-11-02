@@ -197,6 +197,41 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "studentId", "studentName", "language", "certificateType", "level", "certificateNumber", "issueDate", "status", "createdAt"]
+    },
+    "ClubItem": {
+      "title": "ClubItem",
+      "description": "Filialda o'tkaziladigan fan to'garaklari va ularning yagona haftalik jadvali",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "number" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "description": { "type": "string" },
+        "supervisorName": { "type": "string" },
+        "location": { "type": "string" },
+        "scheduleDescription": { "type": "string" },
+        "capacity": { "type": "number" },
+        "enrolledStudentsCount": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "academicYear", "location", "scheduleDescription", "status"]
+    },
+    "ClubEnrollment": {
+      "title": "ClubEnrollment",
+      "description": "Talabalarning to'garaklarga a'zo bo'lish arizalari va qaydlari",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clubId": { "type": "string" },
+        "clubName": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "enrolledAt": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "clubId", "studentId", "studentName", "enrolledAt", "status"]
     }
   },
   "firestore": {
@@ -247,6 +282,14 @@
     "/auditLogs/{logId}": {
       "schema": "AuditLog",
       "description": "Audit jurnali yozuvlari"
+    },
+    "/clubs/{clubId}": {
+      "schema": "ClubItem",
+      "description": "Fan to'garaklari jadvali va tafsilotlari"
+    },
+    "/clubEnrollments/{enrollmentId}": {
+      "schema": "ClubEnrollment",
+      "description": "To'garakka yozilgan talabalar"
     }
   }
 }

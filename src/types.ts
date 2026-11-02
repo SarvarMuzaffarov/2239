@@ -19,6 +19,7 @@ export type PermissionResource =
   | 'admins'
   | 'audit_logs'
   | 'trash'
+  | 'clubs'
   | 'settings';
 
 export type PermissionAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'export';
@@ -347,5 +348,67 @@ export interface LanguageCertificate {
   reviewedBy?: string;
   reviewedByName?: string;
   reviewNotes?: string;
+}
+
+export type DayOfWeek = 'Dushanba' | 'Seshanba' | 'Chorshanba' | 'Payshanba' | 'Juma' | 'Shanba';
+
+export type ClubCategory =
+  | 'Tabiiy fanlar'
+  | 'Kimyo va Biotexnologiya'
+  | 'Oziq-ovqat va Texnologiya'
+  | 'Muhandislik va Mexanika'
+  | 'Iqtisodiyot va Biznes'
+  | 'IT va Dasturlash'
+  | 'Tillar'
+  | 'Sport'
+  | 'Boshqa';
+
+export interface ClubScheduleSlot {
+  dayOfWeek: DayOfWeek;
+  startTime: string; // Masalan: "14:00"
+  endTime?: string; // Masalan: "15:30"
+  room: string; // Masalan: "114-xona"
+  frequency?: string; // Masalan: "haftalik"
+  notes?: string;
+}
+
+export interface ClubItem {
+  id: string;
+  orderNumber?: number; // 1 dan 36 gacha
+  name: string; // Masalan: "Yosh biologlar (U. G‘ofurova)"
+  category: ClubCategory;
+  academicYear: string; // "2026/2027"
+  description?: string;
+  supervisorName: string; // Masalan: "U. G‘ofurova"
+  supervisorPhone?: string;
+  supervisorId?: string;
+  location: string; // Masalan: "114-xona", "Texnopark", "Sport zali"
+  building?: string;
+  room?: string;
+  scheduleDescription: string; // Masalan: "Seshanba, 14:00 (haftalik)"
+  slots: ClubScheduleSlot[];
+  capacity?: number;
+  enrolledStudentsCount: number;
+  enrolledStudentIds?: string[];
+  status: 'Faol' | 'Rejalashtirilgan' | 'Tugatilgan';
+  isDeleted?: boolean;
+  deletedAt?: string;
+  deletedBy?: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface ClubEnrollment {
+  id: string;
+  clubId: string;
+  clubName: string;
+  studentId: string;
+  studentName: string;
+  studentPhone?: string;
+  studentGroup?: string;
+  studentFaculty?: string;
+  studentCourse?: number;
+  enrolledAt: string;
+  status: 'Faol' | 'Kutilmoqda' | 'Bekor qilingan';
 }
 

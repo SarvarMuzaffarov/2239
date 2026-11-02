@@ -11,7 +11,10 @@ import type {
   EventItem,
   Announcement,
   AuditLog,
+  ClubItem,
+  ClubEnrollment,
 } from '../types';
+import { INITIAL_CLUBS_DATA } from '../data/initialClubsData';
 import { normalizePhone } from './crypto';
 
 interface StoreData {
@@ -25,6 +28,8 @@ interface StoreData {
   events: EventItem[];
   announcements: Announcement[];
   auditLogs: AuditLog[];
+  clubs: ClubItem[];
+  clubEnrollments: ClubEnrollment[];
 }
 
 type CollectionKey = keyof StoreData;
@@ -122,6 +127,8 @@ class OfflineStore {
       events: ((realSnapshot.events as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
       announcements: ((realSnapshot.announcements as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
       auditLogs: ((realSnapshot.auditLogs as any[]) || []).filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      clubs: INITIAL_CLUBS_DATA.filter(i => !this.permanentlyDeletedIds.has(i?.id)),
+      clubEnrollments: [],
     };
 
     // 2. Asynchronously hydrate from IndexedDB for any newer locally saved items
@@ -167,6 +174,8 @@ class OfflineStore {
       'events',
       'announcements',
       'auditLogs',
+      'clubs',
+      'clubEnrollments',
     ];
 
     for (const col of collections) {
@@ -182,6 +191,22 @@ class OfflineStore {
             if (cleanRes.hasChanges) {
               finalColItems = cleanRes.items;
               idbSaveCollection('certificates', finalColItems).catch(() => {});
+            }
+          }
+
+          // Merge any newly introduced clubs from INITIAL_CLUBS_DATA
+          if (col === 'clubs') {
+            const existingIds = new Set(finalColItems.map(c => c.id));
+            let addedNew = false;
+            for (const initClub of INITIAL_CLUBS_DATA) {
+              if (!existingIds.has(initClub.id) && !this.permanentlyDeletedIds.has(initClub.id)) {
+                finalColItems.push(initClub);
+                addedNew = true;
+              }
+            }
+            if (addedNew) {
+              finalColItems.sort((a, b) => (a.orderNumber || 999) - (b.orderNumber || 999));
+              idbSaveCollection('clubs', finalColItems).catch(() => {});
             }
           }
 
@@ -401,6 +426,8 @@ class OfflineStore {
       events: (realSnapshot.events as any[]) || [],
       announcements: (realSnapshot.announcements as any[]) || [],
       auditLogs: (realSnapshot.auditLogs as any[]) || [],
+      clubs: INITIAL_CLUBS_DATA,
+      clubEnrollments: [],
     };
     for (const key of Object.keys(this.data) as CollectionKey[]) {
       this.persistCollection(key);

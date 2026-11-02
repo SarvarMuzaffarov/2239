@@ -40,11 +40,14 @@ import type {
   EventItem,
   Announcement,
   UserAccount,
+  ClubItem,
+  ClubEnrollment,
 } from '../types';
 import { hasPermission } from '../lib/permissions';
 import { DIRECTIONS, canonicalizeDirection } from '../constants/directions';
 import { getShareUrl, shareToTelegram, copyShareLink } from '../lib/shareUtils';
 import { AutoLinkedText } from './AutoLinkedText';
+import { ClubsScheduleView } from './ClubsScheduleView';
 
 interface Props {
   students: StudentProfile[];
@@ -54,6 +57,8 @@ interface Props {
   certificates: CertificateItem[];
   events: EventItem[];
   announcements: Announcement[];
+  clubs?: ClubItem[];
+  enrollments?: ClubEnrollment[];
   isLoading: boolean;
   currentUser: UserAccount | null;
   onOpenLogin: () => void;
@@ -66,6 +71,8 @@ interface Props {
   onOpenStudentProfile?: (studentId: string) => void;
   onOpenManageTopStudents?: () => void;
   onNotify?: (type: 'success' | 'error' | 'info', msg: string) => void;
+  onEnrollInClub?: (club: ClubItem) => void;
+  onUnenrollClub?: (clubId: string) => void;
 }
 
 export const PublicLandingPage: React.FC<Props> = ({
@@ -76,6 +83,8 @@ export const PublicLandingPage: React.FC<Props> = ({
   certificates,
   events,
   announcements,
+  clubs = [],
+  enrollments = [],
   isLoading,
   currentUser,
   onOpenLogin,
@@ -88,6 +97,8 @@ export const PublicLandingPage: React.FC<Props> = ({
   onOpenStudentProfile,
   onOpenManageTopStudents,
   onNotify,
+  onEnrollInClub,
+  onUnenrollClub,
 }) => {
   // Search & Filters
   const [eventFilter, setEventFilter] = useState<'all' | 'upcoming' | 'ongoing' | 'olimpiada'>('all');
@@ -1335,6 +1346,20 @@ export const PublicLandingPage: React.FC<Props> = ({
             );
           })}
         </div>
+      </section>
+
+      {/* ========================================================================= */}
+      {/* 6.5. FAN TO‘GARAKLARI YAGONA JADVALI (2026/2027) */}
+      {/* ========================================================================= */}
+      <section id="togaraklar" className="pt-4 scroll-mt-20">
+        <ClubsScheduleView
+          clubs={clubs}
+          enrollments={enrollments}
+          currentUser={currentUser}
+          onEnroll={onEnrollInClub}
+          onUnenroll={onUnenrollClub}
+          onOpenLogin={onOpenLogin}
+        />
       </section>
 
       {/* ========================================================================= */}

@@ -49,6 +49,7 @@ import {
   Upload,
   Sparkles,
   UserPlus,
+  BookOpen,
 } from 'lucide-react';
 import { offlineStore } from '../lib/offlineStore';
 import { uploadPdfDocument } from '../lib/storage';
@@ -66,8 +67,13 @@ import { RevokeCertificateModal } from './admin/RevokeCertificateModal';
 import { ResetPasswordModal } from './admin/ResetPasswordModal';
 import { TopStudentsManageModal } from './TopStudentsManageModal';
 import { PortfolioExportModal } from './PortfolioExportModal';
+import { ClubsScheduleView } from './ClubsScheduleView';
+import { ClubManageModal } from './ClubManageModal';
 import { hasPermission } from '../lib/permissions';
 import {
+  createClub,
+  updateClub,
+  deleteClub,
   updateProjectOrStartupStatus,
   deleteProjectOrStartup,
   updateAchievementStatus,
@@ -135,6 +141,8 @@ import type {
   EventItem,
   Announcement,
   AuditLog,
+  ClubItem,
+  ClubEnrollment,
 } from '../types';
 
 interface Props {
@@ -149,6 +157,8 @@ interface Props {
   events: EventItem[];
   announcements: Announcement[];
   auditLogs: AuditLog[];
+  clubs?: ClubItem[];
+  enrollments?: ClubEnrollment[];
   onNotify: (type: 'success' | 'error' | 'info', msg: string) => void;
   onOpenPdf: (url: string, name?: string, size?: number, title?: string) => void;
   onConfirmModal: (options: {
@@ -173,6 +183,7 @@ type TabType =
   | 'language_certificates'
   | 'events'
   | 'announcements'
+  | 'clubs'
   | 'admins'
   | 'trash'
   | 'audit';
@@ -189,6 +200,8 @@ export const AdminDashboard: React.FC<Props> = ({
   events = [],
   announcements = [],
   auditLogs = [],
+  clubs = [],
+  enrollments = [],
   onNotify,
   onOpenPdf,
   onConfirmModal,
@@ -235,6 +248,7 @@ export const AdminDashboard: React.FC<Props> = ({
     { id: 'language_certificates' as TabType, label: 'Til sertifikatlari', icon: Languages, count: languageCertificates.filter(lc => !lc.isDeleted).length, visible: canViewLanguageCertificates },
     { id: 'events' as TabType, label: 'Tadbirlar', icon: Calendar, count: events.filter(e => !e.isDeleted).length, visible: canViewEvents },
     { id: 'announcements' as TabType, label: "E'lonlar", icon: Bell, count: announcements.filter(a => !a.isDeleted).length, visible: canViewAnnouncements },
+    { id: 'clubs' as TabType, label: "To‘garaklar", icon: BookOpen, count: clubs.length, visible: true },
     { id: 'admins' as TabType, label: 'Adminlar va Huquqlar', icon: Shield, count: allUsers.filter(u => (u.role === 'admin' || u.role === 'superAdmin') && !u.isDeleted).length, visible: canViewAdmins },
     { id: 'trash' as TabType, label: 'Chiqindilar qutisi', icon: Archive, count: trashCount > 0 ? trashCount : null, visible: canViewTrash },
     { id: 'audit' as TabType, label: 'Audit Log', icon: FileText, count: auditLogs.length, visible: canViewAudit },
@@ -260,6 +274,7 @@ export const AdminDashboard: React.FC<Props> = ({
     languageCertificates,
     events,
     announcements,
+    clubs,
     allUsers,
     auditLogs
   ]);
@@ -461,6 +476,55 @@ export const AdminDashboard: React.FC<Props> = ({
   const [editAnnContent, setEditAnnContent] = useState('');
   const [editAnnAudience, setEditAnnAudience] = useState<'Barcha talabalar' | 'Tanlangan talabalar' | 'Tadbir ishtirokchilari'>('Barcha talabalar');
   const [isEditAnnSubmitting, setIsEditAnnSubmitting] = useState(false);
+
+  // Clubs management state
+  const [isClubModalOpen, setIsClubModalOpen] = useState(false);
+  const [editingClub, setEditingClub] = useState<ClubItem | null>(null);
+
+  const handleSaveClub = async (clubData: Partial<ClubItem>) => {
+    try {
+      if (editingClub) {
+        await updateClub(editingClub.id, clubData, {
+          id: currentUser.id,
+          fullName: currentUser.fullName,
+          role: currentUser.role,
+        });
+        onNotify('success', `To‘garak «${clubData.name || editingClub.name}» muvaffaqiyatli yangilandi.`);
+      } else {
+        await createClub(clubData as any, {
+          id: currentUser.id,
+          fullName: currentUser.fullName,
+          role: currentUser.role,
+        });
+        onNotify('success', `Yangi to‘garak «${clubData.name}» muvaffaqiyatli qo‘shildi.`);
+      }
+      setIsClubModalOpen(false);
+      setEditingClub(null);
+    } catch (err: any) {
+      onNotify('error', err?.message || 'To‘garakni saqlashda xatolik yuz berdi.');
+    }
+  };
+
+  const handleDeleteClub = (club: ClubItem) => {
+    onConfirmModal({
+      title: "To‘garakni o‘chirish",
+      message: `«${club.name}» to‘garagini tizimdan o‘chirishni tasdiqlaysizmi?`,
+      confirmText: "Ha, o‘chirish",
+      isDestructive: true,
+      onConfirm: async () => {
+        try {
+          await deleteClub(club.id, {
+            id: currentUser.id,
+            fullName: currentUser.fullName,
+            role: currentUser.role,
+          });
+          onNotify('success', `To‘garak «${club.name}» o‘chirildi.`);
+        } catch (err: any) {
+          onNotify('error', err?.message || 'O‘chirishda xatolik yuz berdi.');
+        }
+      },
+    });
+  };
 
   // Available unique faculties for filter
   const availableFaculties = Array.from(
@@ -5176,8 +5240,40 @@ export const AdminDashboard: React.FC<Props> = ({
         </div>
       )}
 
+      {/* CLUBS TAB */}
+      {activeTab === 'clubs' && (
+        <div className="space-y-6">
+          <ClubsScheduleView
+            clubs={clubs}
+            enrollments={enrollments}
+            currentUser={currentUser}
+            canManage={true}
+            onOpenAddClub={() => {
+              setEditingClub(null);
+              setIsClubModalOpen(true);
+            }}
+            onOpenEditClub={club => {
+              setEditingClub(club);
+              setIsClubModalOpen(true);
+            }}
+            onDeleteClub={handleDeleteClub}
+          />
+        </div>
+      )}
+
         </div>
       </div>
+
+      {/* MODAL: MANAGE CLUB (ADD / EDIT) */}
+      <ClubManageModal
+        isOpen={isClubModalOpen}
+        onClose={() => {
+          setIsClubModalOpen(false);
+          setEditingClub(null);
+        }}
+        clubToEdit={editingClub}
+        onSave={handleSaveClub}
+      />
 
       {/* ================= ADMIN MODALS ================= */}
 
