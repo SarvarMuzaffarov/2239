@@ -30,6 +30,8 @@ const DAYS: DayOfWeek[] = [
   'Shanba',
 ];
 
+import { OFFICIAL_KAFEDRALAR } from '../data/initialClubsData';
+
 export const ClubManageModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -38,6 +40,7 @@ export const ClubManageModal: React.FC<Props> = ({
 }) => {
   const [orderNumber, setOrderNumber] = useState<number>(1);
   const [name, setName] = useState('');
+  const [department, setDepartment] = useState('Energetika va atrof-muhit muhandisligi');
   const [category, setCategory] = useState<ClubCategory>('Tabiiy fanlar');
   const [academicYear, setAcademicYear] = useState('2026/2027');
   const [supervisorName, setSupervisorName] = useState('');
@@ -56,6 +59,7 @@ export const ClubManageModal: React.FC<Props> = ({
     if (clubToEdit) {
       setOrderNumber(clubToEdit.orderNumber || 1);
       setName(clubToEdit.name || '');
+      setDepartment(clubToEdit.department || 'Energetika va atrof-muhit muhandisligi');
       setCategory(clubToEdit.category || 'Tabiiy fanlar');
       setAcademicYear(clubToEdit.academicYear || '2026/2027');
       setSupervisorName(clubToEdit.supervisorName || '');
@@ -72,8 +76,9 @@ export const ClubManageModal: React.FC<Props> = ({
         setFrequency(slot.frequency || 'haftalik');
       }
     } else {
-      setOrderNumber(37);
+      setOrderNumber(44);
       setName('');
+      setDepartment('Energetika va atrof-muhit muhandisligi');
       setCategory('Tabiiy fanlar');
       setAcademicYear('2026/2027');
       setSupervisorName('');
@@ -110,6 +115,7 @@ export const ClubManageModal: React.FC<Props> = ({
     const clubPayload: Partial<ClubItem> = {
       orderNumber: Number(orderNumber) || 1,
       name: name.trim(),
+      department: department.trim(),
       category,
       academicYear,
       supervisorName: supervisorName.trim() || 'Kafedra o‘qituvchisi',
@@ -206,6 +212,23 @@ export const ClubManageModal: React.FC<Props> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
+                Kafedra nomi *
+              </label>
+              <select
+                value={department}
+                onChange={e => setDepartment(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-900/20 text-sm bg-white font-medium"
+              >
+                {OFFICIAL_KAFEDRALAR.map(k => (
+                  <option key={k.id} value={k.name}>
+                    {k.name}
+                  </option>
+                ))}
+                <option value="Boshqa">Boshqa kafedra</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
                 Yo‘nalish / Kategoriya
               </label>
               <select
@@ -220,6 +243,9 @@ export const ClubManageModal: React.FC<Props> = ({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 To‘garak rahbari / O‘qituvchi

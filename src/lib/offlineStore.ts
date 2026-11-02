@@ -194,20 +194,30 @@ class OfflineStore {
             }
           }
 
-          // Merge any newly introduced clubs from INITIAL_CLUBS_DATA
+          // Merge and sync official clubs from INITIAL_CLUBS_DATA
           if (col === 'clubs') {
+            const initMap = new Map(INITIAL_CLUBS_DATA.map(c => [c.id, c]));
+            // Update existing initial clubs with latest official attributes (department, exact supervisor, etc.)
+            finalColItems = finalColItems.map(item => {
+              const official = initMap.get(item.id);
+              if (official) {
+                return {
+                  ...official,
+                  enrolledStudentsCount: item.enrolledStudentsCount || 0,
+                  enrolledStudentIds: item.enrolledStudentIds || [],
+                };
+              }
+              return item;
+            });
+
             const existingIds = new Set(finalColItems.map(c => c.id));
-            let addedNew = false;
             for (const initClub of INITIAL_CLUBS_DATA) {
               if (!existingIds.has(initClub.id) && !this.permanentlyDeletedIds.has(initClub.id)) {
                 finalColItems.push(initClub);
-                addedNew = true;
               }
             }
-            if (addedNew) {
-              finalColItems.sort((a, b) => (a.orderNumber || 999) - (b.orderNumber || 999));
-              idbSaveCollection('clubs', finalColItems).catch(() => {});
-            }
+            finalColItems.sort((a, b) => (a.orderNumber || 999) - (b.orderNumber || 999));
+            idbSaveCollection('clubs', finalColItems).catch(() => {});
           }
 
           this.data[col] = finalColItems as any;

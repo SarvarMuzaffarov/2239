@@ -363,6 +363,14 @@ export type ClubCategory =
   | 'Sport'
   | 'Boshqa';
 
+export type KafedraName =
+  | 'Energetika va atrof-muhit muhandisligi'
+  | 'Oziq-ovqat texnologiyalari'
+  | 'Avtomatika va texnologik jarayonlar'
+  | 'Iqtisodiyot va ijtimoiy fanlar'
+  | 'Raqamli texnologiyalar'
+  | 'Kimyo muhandisligi va neft-gaz kimyosi';
+
 export interface ClubScheduleSlot {
   dayOfWeek: DayOfWeek;
   startTime: string; // Masalan: "14:00"
@@ -374,9 +382,10 @@ export interface ClubScheduleSlot {
 
 export interface ClubItem {
   id: string;
-  orderNumber?: number; // 1 dan 36 gacha
-  name: string; // Masalan: "Yosh biologlar (U. G‘ofurova)"
+  orderNumber?: number; // 1 dan 43 gacha
+  name: string; // Masalan: "Yosh biologlar"
   category: ClubCategory;
+  department?: string; // Kafedra nomi
   academicYear: string; // "2026/2027"
   description?: string;
   supervisorName: string; // Masalan: "U. G‘ofurova"
