@@ -6,6 +6,7 @@ import {
   getDocs,
   updateDoc,
   deleteDoc,
+  deleteField,
   writeBatch,
   query,
   where,
@@ -69,10 +70,17 @@ async function withFirestoreTimeout<T>(
  * "Unsupported field value: undefined"
  */
 export function removeUndefinedFields<T extends Record<string, any>>(obj: T): Partial<T> {
+  if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+    return obj;
+  }
   const cleaned: any = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      cleaned[key] = value;
+      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date) && typeof (value as any).toMillis !== 'function') {
+        cleaned[key] = removeUndefinedFields(value);
+      } else {
+        cleaned[key] = value;
+      }
     }
   }
   return cleaned;
@@ -314,7 +322,7 @@ export async function updateSupervisorDoc(
 
   try {
     const ref = doc(db, 'supervisors', id);
-    await updateDoc(ref, cleanedUpdates);
+    await setDoc(ref, cleanedUpdates, { merge: true });
   } catch (err) {
     console.warn('Firestore updateSupervisorDoc note (saved locally):', err);
   }
@@ -491,11 +499,27 @@ export async function updateProjectOrStartup(
     updatedAt: now,
   });
 
-  await withFirestoreTimeout(
-    updateDoc(ref, cleanedUpdates),
-    12000,
-    "Loyiha ma'lumotlarini yangilashda vaqt tugadi. Qayta urinib ko'ring."
-  );
+  // Sync with offlineStore immediately
+  const existingProj = offlineStore.getById('projects', id) as ProjectOrStartup | undefined;
+  if (existingProj) {
+    offlineStore.saveItem('projects', {
+      ...existingProj,
+      ...cleanedUpdates,
+    });
+  }
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleanedUpdates, { merge: true }),
+      12000,
+      "Loyiha ma'lumotlarini yangilashda vaqt tugadi. Qayta urinib ko'ring."
+    );
+  } catch (err: any) {
+    console.warn('Firestore updateProjectOrStartup note (saved locally):', err);
+    if (!err?.message?.includes('offline') && !err?.message?.includes('timeout')) {
+      throw err;
+    }
+  }
 
   await logAuditAction(
     actor,
@@ -1139,10 +1163,12 @@ export async function createEventDoc(
     createdBy: actor.fullName,
   };
 
+  const cleanEv = removeUndefinedFields(ev);
+
   offlineStore.saveItem('events', ev);
 
   try {
-    await setDoc(ref, ev);
+    await setDoc(ref, cleanEv);
   } catch (err) {
     console.warn('Firestore createEventDoc note (saved locally):', err);
   }
@@ -1159,17 +1185,87 @@ export async function createEventDoc(
 
 export async function updateEventDoc(
   id: string,
-  updates: Partial<EventItem>,
+  updates: Partial<EventItem> & Record<string, any>,
   actor: { id: string; fullName: string; role: UserRole }
 ) {
   const ref = doc(db, 'events', id);
-  await updateDoc(ref, updates);
+
+  // 1. Prepare clean Firestore payload: remove undefined fields and handle deleteField
+  const cleanUpdates: Record<string, any> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      cleanUpdates[key] = value;
+    }
+  }
+
+  // Handle participantsLimit: if explicitly passed as null, empty string, or undefined, remove the field in Firestore
+  if ('participantsLimit' in updates) {
+    if (updates.participantsLimit === undefined || updates.participantsLimit === null || (updates.participantsLimit as any) === '') {
+      cleanUpdates.participantsLimit = deleteField();
+    } else {
+      const num = typeof updates.participantsLimit === 'string' ? parseInt(updates.participantsLimit, 10) : Number(updates.participantsLimit);
+      if (!isNaN(num) && num > 0) {
+        cleanUpdates.participantsLimit = num;
+      } else {
+        cleanUpdates.participantsLimit = deleteField();
+      }
+    }
+  }
+
+  cleanUpdates.updatedAt = new Date().toISOString();
+
+  // 2. Immediately update offlineStore so the UI reflects changes instantly (0ms lag)
+  const existingEvent = offlineStore.getById('events', id) as EventItem | undefined;
+  const updatedEvent: EventItem = {
+    ...(existingEvent || ({} as EventItem)),
+    id,
+    title: updates.title !== undefined ? updates.title : (existingEvent?.title || ''),
+    description: updates.description !== undefined ? updates.description : (existingEvent?.description || ''),
+    date: updates.date !== undefined ? updates.date : (existingEvent?.date || ''),
+    time: updates.time !== undefined ? updates.time : (existingEvent?.time || ''),
+    location: updates.location !== undefined ? updates.location : (existingEvent?.location || ''),
+    deadline: updates.deadline !== undefined ? updates.deadline : (existingEvent?.deadline || ''),
+    status: (updates.status as any) || existingEvent?.status || 'Rejalashtirilgan',
+    participantIds: existingEvent?.participantIds || [],
+    createdAt: existingEvent?.createdAt || new Date().toISOString(),
+    createdBy: existingEvent?.createdBy || actor.fullName,
+    eventType: updates.eventType !== undefined ? updates.eventType : (existingEvent?.eventType || 'Tadbir'),
+    documentUrl: updates.documentUrl !== undefined ? updates.documentUrl : existingEvent?.documentUrl,
+    bannerUrl: updates.bannerUrl !== undefined ? updates.bannerUrl : existingEvent?.bannerUrl,
+    updatedAt: cleanUpdates.updatedAt,
+  };
+
+  if ('participantsLimit' in updates) {
+    const lim = typeof updates.participantsLimit === 'string' ? parseInt(updates.participantsLimit, 10) : Number(updates.participantsLimit);
+    if (!isNaN(lim) && lim > 0) {
+      updatedEvent.participantsLimit = lim;
+    } else {
+      delete updatedEvent.participantsLimit;
+    }
+  }
+
+  offlineStore.saveItem('events', updatedEvent);
+
+  // 3. Persist to Firestore with timeout and setDoc with merge: true
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleanUpdates, { merge: true }),
+      12000,
+      'Tadbirni yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
+    );
+  } catch (err: any) {
+    console.warn('Firestore updateEventDoc note (saved locally in offlineStore):', err);
+    if (!err?.message?.includes('offline') && !err?.message?.includes('timeout')) {
+      throw err;
+    }
+  }
+
   await logAuditAction(
     actor,
     "Tadbirni tahrirlash",
     'events',
     id,
-    `Tadbir yangilandi: ${updates.title || id}`
+    `Tadbir yangilandi: ${updates.title || existingEvent?.title || id}`
   );
 }
 
@@ -1478,7 +1574,28 @@ export async function updateAnnouncementDoc(
     ...updates,
     updatedAt: new Date().toISOString(),
   });
-  await updateDoc(ref, cleanUpdates);
+
+  // Sync with offlineStore immediately
+  const existingAnn = offlineStore.getById('announcements', id) as Announcement | undefined;
+  if (existingAnn) {
+    offlineStore.saveItem('announcements', {
+      ...existingAnn,
+      ...cleanUpdates,
+    });
+  }
+
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, cleanUpdates, { merge: true }),
+      12000,
+      'E’lonni yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
+    );
+  } catch (err: any) {
+    console.warn('Firestore updateAnnouncementDoc note (saved locally):', err);
+    if (!err?.message?.includes('offline') && !err?.message?.includes('timeout')) {
+      throw err;
+    }
+  }
   await logAuditAction(
     actor,
     "E'lonni tahrirlash",

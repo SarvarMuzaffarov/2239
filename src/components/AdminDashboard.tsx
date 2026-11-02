@@ -640,6 +640,9 @@ export const AdminDashboard: React.FC<Props> = ({
     if (!editingEvent) return;
     setIsEditEventSubmitting(true);
     try {
+      const parsedQuota = editEventQuota.trim() ? parseInt(editEventQuota.trim(), 10) : NaN;
+      const quotaValue = !isNaN(parsedQuota) && parsedQuota > 0 ? parsedQuota : null;
+
       await updateEventDoc(
         editingEvent.id,
         {
@@ -648,11 +651,11 @@ export const AdminDashboard: React.FC<Props> = ({
           date: editEventDate,
           time: editEventTime,
           location: editEventLocation.trim(),
-          deadline: editEventDeadline || undefined,
+          deadline: editEventDeadline.trim() || '',
           status: editEventStatus,
           eventType: editEventType || 'Tadbir',
-          participantsLimit: editEventQuota ? parseInt(editEventQuota, 10) : undefined,
-          documentUrl: editEventDocUrl.trim() || undefined,
+          participantsLimit: quotaValue as any,
+          documentUrl: editEventDocUrl.trim() || '',
         },
         {
           id: currentUser.id,
@@ -1155,20 +1158,27 @@ export const AdminDashboard: React.FC<Props> = ({
     e.preventDefault();
     setIsEventSubmitting(true);
     try {
+      const parsedQuota = eventQuota.trim() ? parseInt(eventQuota.trim(), 10) : NaN;
+      const eventData: any = {
+        title: eventTitle.trim(),
+        description: eventDesc.trim(),
+        date: eventDate,
+        time: eventTime.trim(),
+        location: eventLocation.trim(),
+        deadline: eventDeadline.trim(),
+        status: 'Rejalashtirilgan',
+        createdBy: currentUser.fullName,
+        eventType: eventType || 'Tadbir',
+      };
+      if (!isNaN(parsedQuota) && parsedQuota > 0) {
+        eventData.participantsLimit = parsedQuota;
+      }
+      if (eventDocUrl.trim()) {
+        eventData.documentUrl = eventDocUrl.trim();
+      }
+
       await createEventDoc(
-        {
-          title: eventTitle.trim(),
-          description: eventDesc.trim(),
-          date: eventDate,
-          time: eventTime.trim(),
-          location: eventLocation.trim(),
-          deadline: eventDeadline.trim(),
-          status: 'Rejalashtirilgan',
-          createdBy: currentUser.fullName,
-          eventType: eventType || 'Tadbir',
-          participantsLimit: eventQuota ? parseInt(eventQuota, 10) : undefined,
-          documentUrl: eventDocUrl.trim() || undefined,
-        },
+        eventData,
         currentUser.id,
         currentUser.fullName
       );
