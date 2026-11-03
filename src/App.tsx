@@ -396,8 +396,8 @@ export default function App() {
         return;
       }
 
-      // 8. Public Section Anchors
-      const sectionMatch = hash.replace('#', '');
+      // 8. Public Section Anchors (#togaraklar, #clubs, etc.)
+      const cleanHash = hash.replace('#', '').split('?')[0].split('/')[0].toLowerCase();
       const validSections: Record<string, string> = {
         'tadbirlar': 'tadbirlar',
         'events': 'tadbirlar',
@@ -408,7 +408,11 @@ export default function App() {
         'yonalishlar': 'yonalishlar',
         'directions': 'yonalishlar',
         'togaraklar': 'togaraklar',
+        'togarak': 'togaraklar',
         'clubs': 'togaraklar',
+        'club': 'togaraklar',
+        'jadval': 'togaraklar',
+        'fan-togaraklari': 'togaraklar',
         'yutuqlar': 'yutuqlar',
         'achievements': 'yutuqlar',
         'faol-talabalar': 'faol-talabalar',
@@ -419,17 +423,20 @@ export default function App() {
         'about': 'haqida',
       };
 
-      if (sectionMatch && validSections[sectionMatch]) {
+      const sectionQuery = searchParams.get('section') || searchParams.get('tab') || searchParams.get('bolim');
+      const targetSectionId = validSections[cleanHash] || (sectionQuery && validSections[sectionQuery.toLowerCase()]);
+
+      if (targetSectionId) {
         if (currentView !== 'public') {
           setCurrentView('public');
         }
         setSelectedDirection(null);
         setTimeout(() => {
-          const el = document.getElementById(validSections[sectionMatch]);
+          const el = document.getElementById(targetSectionId);
           if (el) {
             el.scrollIntoView({ behavior: 'smooth' });
           }
-        }, 100);
+        }, 120);
       }
     };
 

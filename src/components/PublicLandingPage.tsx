@@ -1359,6 +1359,7 @@ export const PublicLandingPage: React.FC<Props> = ({
           onEnroll={onEnrollInClub}
           onUnenroll={onUnenrollClub}
           onOpenLogin={onOpenLogin}
+          onNotify={onNotify}
         />
       </section>
 

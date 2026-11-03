@@ -29,6 +29,8 @@ import {
   Table as TableIcon,
   Layers,
   ChevronDown,
+  Copy,
+  Share2,
 } from 'lucide-react';
 import type {
   ClubItem,
@@ -39,6 +41,7 @@ import type {
   StudentProfile,
 } from '../types';
 import { OFFICIAL_KAFEDRALAR } from '../data/initialClubsData';
+import { getShareUrl, copyShareLink } from '../lib/shareUtils';
 
 interface Props {
   clubs: ClubItem[];
@@ -53,6 +56,7 @@ interface Props {
   onDeleteClub?: (club: ClubItem) => void;
   onViewAttendees?: (club: ClubItem) => void;
   canManage?: boolean;
+  onNotify?: (type: 'success' | 'error' | 'info' | 'warning', message: string) => void;
 }
 
 const DAYS_OF_WEEK: DayOfWeek[] = [
@@ -77,6 +81,7 @@ export const ClubsScheduleView: React.FC<Props> = ({
   onDeleteClub,
   onViewAttendees,
   canManage = false,
+  onNotify,
 }) => {
   // Sort clubs by orderNumber (#1 to #43)
   const sortedClubs = useMemo(() => {
@@ -92,6 +97,9 @@ export const ClubsScheduleView: React.FC<Props> = ({
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | 'all'>('all');
   const [selectedKafedra, setSelectedKafedra] = useState<string>('all');
   const [modalClub, setModalClub] = useState<ClubItem | null>(null);
+
+  // Copy state feedback for section link
+  const [copiedSectionLink, setCopiedSectionLink] = useState(false);
 
   // View mode: 'cards' is ideal for mobile phones, 'table' matches the official document
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
@@ -211,7 +219,6 @@ export const ClubsScheduleView: React.FC<Props> = ({
         });
       }
     });
-    // Any remaining clubs without standard kafedra
     const others = filteredClubs.filter(c => !c.department || !OFFICIAL_KAFEDRALAR.some(k => k.name === c.department));
     if (others.length > 0) {
       groups.push({
@@ -224,6 +231,23 @@ export const ClubsScheduleView: React.FC<Props> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  // Section Direct URL (#togaraklar)
+  const sectionShareUrl = useMemo(() => {
+    return getShareUrl('togaraklar');
+  }, []);
+
+  const handleCopySectionLink = async (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const ok = await copyShareLink(sectionShareUrl);
+    if (ok) {
+      setCopiedSectionLink(true);
+      if (onNotify) onNotify('success', 'To‘garaklar bo‘limi havolasi nusxalandi!');
+      setTimeout(() => setCopiedSectionLink(false), 2500);
+    } else {
+      if (onNotify) onNotify('error', 'Havolani nusxalashda xatolik yuz berdi.');
+    }
   };
 
   const isEnrolledInSelected = selectedClub ? myEnrolledClubIds.has(selectedClub.id) : false;
@@ -258,8 +282,23 @@ export const ClubsScheduleView: React.FC<Props> = ({
             </p>
           </div>
 
-          {/* Action buttons (Download official PDF / Print) */}
+          {/* Action buttons (Bo‘lim havolasi, Rasmiy PDF, Chop etish) */}
           <div className="flex items-center gap-2 flex-wrap pt-2 sm:pt-0">
+            {/* Copy Section Link Button */}
+            <button
+              type="button"
+              onClick={handleCopySectionLink}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-xs transition-all shadow-sm cursor-pointer active:scale-95 ${
+                copiedSectionLink
+                  ? 'bg-emerald-500 text-white shadow-emerald-500/20'
+                  : 'bg-white/15 hover:bg-white/25 text-white border border-white/20'
+              }`}
+              title="To‘garaklar bo‘limi to‘g‘ridan-to‘g‘ri havolasini nusxalash"
+            >
+              {copiedSectionLink ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4 text-blue-200" />}
+              <span>{copiedSectionLink ? 'Nusxalandi!' : 'Bo‘lim havolasi'}</span>
+            </button>
+
             <a
               href="/assets/aistudio/TKTI_Yangiyer_43_togarak_yagona_jadval__94f4bb25.pdf"
               target="_blank"
@@ -268,7 +307,7 @@ export const ClubsScheduleView: React.FC<Props> = ({
               title="Rasmiy tasdiqlangan hujjatni PDF formatda yuklab olish"
             >
               <FileDown className="w-4 h-4 text-slate-950" />
-              <span>Rasmiy PDF hujjat</span>
+              <span className="hidden sm:inline">Rasmiy PDF</span>
             </a>
 
             {canManage && onOpenAddClub && (
@@ -278,18 +317,17 @@ export const ClubsScheduleView: React.FC<Props> = ({
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors shadow-sm cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>To‘garak qo‘shish</span>
+                <span className="hidden sm:inline">To‘garak qo‘shish</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/20 backdrop-blur-xs transition-colors cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-xs border border-white/20 backdrop-blur-xs transition-colors cursor-pointer"
               title="Chop etish"
             >
               <Printer className="w-4 h-4" />
-              <span className="hidden sm:inline">Chop etish</span>
             </button>
           </div>
         </div>
@@ -505,7 +543,7 @@ export const ClubsScheduleView: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setModalClub(selectedClub)}
-                  className="w-full sm:w-auto px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors cursor-pointer text-center"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors cursor-pointer text-center"
                 >
                   Batafsil ma'lumot
                 </button>
@@ -961,7 +999,7 @@ export const ClubsScheduleView: React.FC<Props> = ({
             Ko‘rsatilmoqda: <strong>{filteredClubs.length}</strong> ta to‘garak (Jami: 43 ta to‘garak, 6 ta kafedra)
           </span>
           <span className="text-[11px] text-slate-400">
-            Telefon ekranida kartalar, kompyuterda jadval ko‘rinishida qulay foydalaning
+            Bo‘lim havolasi: <code className="text-blue-900 font-mono font-bold">#togaraklar</code>
           </span>
         </div>
       </div>

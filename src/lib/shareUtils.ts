@@ -10,7 +10,9 @@ export type ShareEntityType =
   | 'student'
   | 'direction'
   | 'verify'
-  | 'section';
+  | 'section'
+  | 'club'
+  | 'togaraklar';
 
 /**
  * Returns a universal, permanent public URL for any entity or section.
@@ -22,6 +24,7 @@ export function getShareUrl(type: ShareEntityType, idOrSlug?: string): string {
     : '';
 
   if (!idOrSlug) {
+    if (type === 'togaraklar') return `${origin}/#togaraklar`;
     return `${origin}/#${type}`;
   }
 
@@ -40,6 +43,10 @@ export function getShareUrl(type: ShareEntityType, idOrSlug?: string): string {
       return `${origin}/#direction/${encodedId}`;
     case 'verify':
       return `${origin}/#verify/${encodedId}`;
+    case 'club':
+      return `${origin}/#club/${encodedId}`;
+    case 'togaraklar':
+      return `${origin}/#togaraklar`;
     case 'section':
       return `${origin}/#${encodedId}`;
     default:
