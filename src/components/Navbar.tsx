@@ -97,74 +97,74 @@ export const Navbar: React.FC<Props> = ({
 
   return (
     <header className="bg-white/95 backdrop-blur-md border-b border-slate-200/90 sticky top-0 z-40 safe-area-pt transition-all">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+      <div className="max-w-[1440px] mx-auto px-3 sm:px-5 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-3">
           {/* Brand Logo & Name */}
           <div
             onClick={() => handleNavClick('top')}
-            className="flex items-center gap-2.5 min-w-0 cursor-pointer select-none group"
+            className="flex items-center gap-2.5 shrink-0 cursor-pointer select-none group"
           >
             <div className="w-10 h-10 shrink-0 rounded-xl bg-blue-900 group-hover:bg-blue-800 text-white flex items-center justify-center shadow-xs transition-colors">
               <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div className="min-w-0">
-              <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight block leading-tight truncate">
+            <div className="shrink-0">
+              <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight block leading-tight whitespace-nowrap">
                 IQTIDORLI TALABALAR
               </span>
-              <span className="text-[10px] sm:text-[11px] text-slate-500 font-semibold tracking-wide block truncate">
+              <span className="text-[10px] sm:text-[11px] text-slate-500 font-semibold tracking-wide block whitespace-nowrap">
                 Ilmiy-innovatsion platforma
               </span>
             </div>
           </div>
 
           {/* Desktop Navigation Links (Public Sections) */}
-          <nav className="hidden xl:flex items-center gap-1 text-xs font-semibold text-slate-600">
+          <nav className="hidden xl:flex items-center gap-0.5 2xl:gap-1 text-xs font-semibold text-slate-600 shrink-0">
             <button
               type="button"
               onClick={() => handleNavClick('top')}
-              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Bosh sahifa
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('tadbirlar')}
-              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Tadbirlar
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('elonlar')}
-              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               E'lonlar
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('loyihalar')}
-              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Loyihalar
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('yonalishlar')}
-              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               Yo‘nalishlar
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('togaraklar')}
-              className="px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl hover:text-blue-900 hover:bg-slate-50 transition-colors cursor-pointer whitespace-nowrap shrink-0"
             >
               To‘garaklar
             </button>
             <button
               type="button"
               onClick={() => handleNavClick('faol-talabalar')}
-              className="px-2.5 py-1.5 rounded-xl text-amber-900 hover:bg-amber-50 transition-colors cursor-pointer font-bold"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl text-amber-900 hover:bg-amber-50 transition-colors cursor-pointer font-bold whitespace-nowrap shrink-0"
             >
               Top-3
             </button>
@@ -172,23 +172,22 @@ export const Navbar: React.FC<Props> = ({
               href="https://t.me/yosh_olimlar_tktiyf"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-2.5 py-1.5 rounded-xl text-sky-600 hover:text-sky-700 hover:bg-sky-50 transition-colors flex items-center gap-1 font-medium ml-1"
+              className="px-2 2xl:px-2.5 py-1.5 rounded-xl text-sky-600 hover:text-sky-700 hover:bg-sky-50 transition-colors flex items-center gap-1 font-medium whitespace-nowrap shrink-0 ml-0.5"
               title="Yosh olimlar Telegram kanali"
             >
-              <Send className="w-3.5 h-3.5" />
+              <Send className="w-3.5 h-3.5 shrink-0" />
               <span>Telegram</span>
             </a>
           </nav>
 
-          {/* Desktop Right Controls */}
-          <div className="hidden sm:flex items-center gap-2.5">
-
+          {/* Desktop Right Controls (xl and up) */}
+          <div className="hidden xl:flex items-center gap-2.5 shrink-0">
             {/* If logged in: Portal/Dashboard switch */}
             {currentUser && onToggleView && (
               <button
                 type="button"
                 onClick={() => onToggleView(currentView === 'dashboard' ? 'public' : 'dashboard')}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors min-h-[38px]"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors min-h-[38px] whitespace-nowrap shrink-0"
               >
                 {currentView === 'dashboard' ? (
                   <>
@@ -219,7 +218,7 @@ export const Navbar: React.FC<Props> = ({
 
             {/* User Profile or Prominent Login Button */}
             {currentUser && roleInfo ? (
-              <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200">
+              <div className="flex items-center gap-2.5 pl-2 border-l border-slate-200 shrink-0">
                 <div className="flex items-center gap-2">
                   <div className="w-8 h-8 rounded-full bg-blue-900 text-white flex items-center justify-center text-xs font-bold overflow-hidden shrink-0">
                     {currentUser.photoURL || (currentUser as any).avatarUrl ? (
@@ -235,12 +234,12 @@ export const Navbar: React.FC<Props> = ({
                       currentUser.fullName.charAt(0).toUpperCase()
                     )}
                   </div>
-                  <div className="text-left hidden md:block">
-                    <span className="text-xs font-bold text-slate-900 block leading-tight truncate max-w-[130px]">
+                  <div className="text-left shrink-0">
+                    <span className="text-xs font-bold text-slate-900 block leading-tight truncate max-w-[110px] 2xl:max-w-[140px] whitespace-nowrap">
                       {currentUser.fullName}
                     </span>
                     <span
-                      className={`inline-block px-1.5 py-0.2 text-[9px] font-semibold rounded-sm border ${roleInfo.className}`}
+                      className={`inline-block px-1.5 py-0.2 text-[9px] font-semibold rounded-sm border whitespace-nowrap ${roleInfo.className}`}
                     >
                       {roleInfo.label}
                     </span>
@@ -250,7 +249,7 @@ export const Navbar: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={onLogout}
-                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors min-w-[38px] min-h-[38px] flex items-center justify-center"
+                  className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors min-w-[38px] min-h-[38px] flex items-center justify-center shrink-0 cursor-pointer"
                   title="Tizimdan chiqish"
                   aria-label="Tizimdan chiqish"
                 >
@@ -262,7 +261,7 @@ export const Navbar: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={onOpenLogin}
-                className="min-h-[42px] px-5 py-2.5 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all flex items-center gap-2 active:scale-95"
+                className="min-h-[40px] px-5 py-2 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs sm:text-sm shadow-xs hover:shadow-md transition-all flex items-center gap-2 active:scale-95 whitespace-nowrap shrink-0 cursor-pointer"
               >
                 <LogIn className="w-4 h-4" />
                 <span>Kirish</span>
@@ -270,13 +269,34 @@ export const Navbar: React.FC<Props> = ({
             )}
           </div>
 
-          {/* Mobile Right Quick Buttons */}
-          <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+          {/* Medium and Mobile Controls (< xl) */}
+          <div className="flex xl:hidden items-center gap-2 shrink-0">
+            {/* If logged in on tablet, show dashboard button */}
+            {currentUser && onToggleView && (
+              <button
+                type="button"
+                onClick={() => onToggleView(currentView === 'dashboard' ? 'public' : 'dashboard')}
+                className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 transition-colors min-h-[36px] whitespace-nowrap"
+              >
+                {currentView === 'dashboard' ? (
+                  <>
+                    <Globe className="w-3.5 h-3.5 text-blue-900" />
+                    <span>Bosh sahifa</span>
+                  </>
+                ) : (
+                  <>
+                    <LayoutDashboard className="w-3.5 h-3.5 text-blue-900" />
+                    <span>Kabinet</span>
+                  </>
+                )}
+              </button>
+            )}
+
             {!currentUser && (
               <button
                 type="button"
                 onClick={onOpenLogin}
-                className="min-h-[38px] px-3.5 py-1.5 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs"
+                className="min-h-[36px] px-3.5 py-1.5 rounded-xl bg-blue-900 hover:bg-blue-800 text-white font-bold text-xs flex items-center gap-1.5 shadow-2xs whitespace-nowrap cursor-pointer"
               >
                 <LogIn className="w-3.5 h-3.5" />
                 <span>Kirish</span>
@@ -295,10 +315,27 @@ export const Navbar: React.FC<Props> = ({
               />
             )}
 
+            {/* Profile avatar indicator on tablet */}
+            {currentUser && roleInfo && (
+              <div className="hidden sm:flex items-center gap-1.5 pl-1">
+                <div className="w-8 h-8 rounded-full bg-blue-900 text-white flex items-center justify-center text-xs font-bold overflow-hidden shrink-0">
+                  {currentUser.photoURL || (currentUser as any).avatarUrl ? (
+                    <img
+                      src={currentUser.photoURL || (currentUser as any).avatarUrl}
+                      alt={currentUser.fullName}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    currentUser.fullName.charAt(0).toUpperCase()
+                  )}
+                </div>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="min-w-[40px] min-h-[40px] p-2 text-slate-700 rounded-xl hover:bg-slate-100 border border-slate-200 flex items-center justify-center transition-colors active:scale-95"
+              className="min-w-[40px] min-h-[40px] p-2 text-slate-700 rounded-xl hover:bg-slate-100 border border-slate-200 flex items-center justify-center transition-colors active:scale-95 cursor-pointer"
               aria-label="Menyuni ochish"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -306,9 +343,9 @@ export const Navbar: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* Mobile Full Dropdown Menu */}
+        {/* Mobile / Tablet Full Dropdown Menu (< xl) */}
         {mobileMenuOpen && (
-          <div className="lg:hidden py-4 border-t border-slate-200 space-y-3 animate-in fade-in duration-200">
+          <div className="xl:hidden py-4 border-t border-slate-200 space-y-3 animate-in fade-in duration-200">
             {/* User Profile if Logged In */}
             {currentUser && roleInfo && (
               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200/80 mb-2">
