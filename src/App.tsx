@@ -62,13 +62,16 @@ import {
   subscribeAuditLogs,
   subscribeClubs,
   subscribeClubEnrollments,
+  subscribeFeaturedStudents,
   enrollInClub,
   unenrollFromClub,
+  type SubscriptionScope,
 } from './services/firestoreService';
-import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, query, where, limit, onSnapshot } from 'firebase/firestore';
 import { db } from './lib/firebase';
 import { normalizePhone } from './lib/crypto';
 import { offlineStore } from './lib/offlineStore';
+import { initSyncOutboxAutoFlush } from './lib/syncOutbox';
 import { Lock } from 'lucide-react';
 import type {
   UserAccount,
@@ -564,18 +567,113 @@ export default function App() {
     if (Array.isArray(items)) setLanguageCertificates(items.filter(l => !l.isDeleted));
   };
 
-  // Subscriptions to live real-time collections
+  // Background Offline Sync Outbox auto-retry
   useEffect(() => {
-    // 1. Announcements, Events & Clubs are lightweight and relevant for all visitors
+    return initSyncOutboxAutoFlush();
+  }, []);
+
+  // Resolve scoped studentId / supervisorId for targeted role-based Firestore queries
+  const [scopedEntityIds, setScopedEntityIds] = useState<{ studentId?: string; supervisorId?: string }>({});
+
+  useEffect(() => {
+    if (!currentUser) {
+      setScopedEntityIds({});
+      return;
+    }
+    const normPhone = normalizePhone(currentUser.phone);
+    if (currentUser.role === 'student') {
+      const localMatch = offlineStore.get('students').find(
+        s => !s.isDeleted && (
+          s.id === currentUser.id ||
+          s.userId === currentUser.id ||
+          (s.phone && normPhone && normalizePhone(s.phone) === normPhone)
+        )
+      );
+      if (localMatch?.id) {
+        setScopedEntityIds({ studentId: localMatch.id });
+      } else {
+        setScopedEntityIds({ studentId: undefined });
+        getDocs(query(collection(db, 'students'), where('userId', '==', currentUser.id), limit(1)))
+          .then(snap => {
+            if (!snap.empty) {
+              const found = { id: snap.docs[0].id, ...snap.docs[0].data() } as StudentProfile;
+              offlineStore.saveItem('students', found);
+              setScopedEntityIds({ studentId: found.id });
+            }
+          })
+          .catch(() => {});
+      }
+    } else if (currentUser.role === 'supervisor') {
+      const localSup = offlineStore.get('supervisors').find(
+        s => !s.isDeleted && (
+          s.id === currentUser.id ||
+          s.userId === currentUser.id ||
+          (s.phone && normPhone && normalizePhone(s.phone) === normPhone)
+        )
+      );
+      if (localSup?.id) {
+        setScopedEntityIds({ supervisorId: localSup.id });
+      } else {
+        setScopedEntityIds({});
+        getDocs(query(collection(db, 'supervisors'), where('userId', '==', currentUser.id), limit(1)))
+          .then(snap => {
+            if (!snap.empty) {
+              const found = { id: snap.docs[0].id, ...snap.docs[0].data() } as SupervisorProfile;
+              offlineStore.saveItem('supervisors', found);
+              setScopedEntityIds({ supervisorId: found.id });
+            }
+          })
+          .catch(() => {});
+      }
+    } else {
+      setScopedEntityIds({});
+    }
+  }, [currentUser?.id, currentUser?.role, currentUser?.phone]);
+
+  // Subscriptions to live real-time collections (role-scoped + delta-synced)
+  useEffect(() => {
+    const scope: SubscriptionScope | undefined = currentUser
+      ? {
+          role: currentUser.role,
+          userId: currentUser.id,
+          studentId: scopedEntityIds.studentId,
+          supervisorId: scopedEntityIds.supervisorId,
+        }
+      : undefined;
+
+    // 1. Lightweight / delta-synced public streams (featuredStudents = 1 doc, events/announcements/clubs = delta synced)
     const unsubEvents = subscribeEvents(setEvents);
     const unsubAnnouncements = subscribeAnnouncements(setAnnouncements);
-    const unsubClubs = subscribeClubs(setClubs);
-    const unsubClubEnrollments = subscribeClubEnrollments(setClubEnrollments);
+    const unsubClubs = subscribeClubs(setClubs, scope);
+    const unsubClubEnrollments = subscribeClubEnrollments(setClubEnrollments, scope);
+    const unsubFeatured = subscribeFeaturedStudents(assignments => {
+      if (Array.isArray(assignments) && assignments.length > 0) {
+        const assignedMap = new Map(assignments.map(a => [a.studentId, a]));
+        setStudents(prev => {
+          return prev.map(st => {
+            const assign = assignedMap.get(st.id);
+            if (assign) {
+              return {
+                ...st,
+                isTopStudent: true,
+                topStudentRank: assign.rank,
+                topStudentReason: assign.reason || st.topStudentReason,
+              };
+            } else if (st.isTopStudent) {
+              return {
+                ...st,
+                isTopStudent: false,
+                topStudentRank: 0,
+                topStudentReason: '',
+              };
+            }
+            return st;
+          });
+        });
+      }
+    });
 
-    // 2. Subscriptions management:
-    // When not logged in (public landing page):
-    // Use local offlineStore directly (which contains all 223 students, 157 certificates, 82 projects).
-    // This saves 550 Firestore reads per visitor, preventing quota exhaustion so counts NEVER drop to 0!
+    // 2. Role-scoped core collections
     let unsubStudents = () => {};
     let unsubSupervisors = () => {};
     let unsubProjects = () => {};
@@ -586,20 +684,19 @@ export default function App() {
     let unsubLogs = () => {};
 
     if (currentUser) {
-      // Connect to live Firestore for logged-in sessions
-      unsubStudents = subscribeStudents(setSafeStudents);
-      unsubSupervisors = subscribeSupervisors(setSafeSupervisors);
-      unsubProjects = subscribeProjectsAndStartups(setSafeProjects);
-      unsubAchievements = subscribeAchievements(setSafeAchievements);
-      unsubCertificates = subscribeCertificates(setSafeCertificates);
-      unsubLanguageCertificates = subscribeLanguageCertificates(setSafeLanguageCertificates);
+      unsubStudents = subscribeStudents(setSafeStudents, scope);
+      unsubSupervisors = subscribeSupervisors(setSafeSupervisors, scope);
+      unsubProjects = subscribeProjectsAndStartups(setSafeProjects, scope);
+      unsubAchievements = subscribeAchievements(setSafeAchievements, scope);
+      unsubCertificates = subscribeCertificates(setSafeCertificates, scope);
+      unsubLanguageCertificates = subscribeLanguageCertificates(setSafeLanguageCertificates, scope);
 
       if (currentUser.role === 'admin' || currentUser.role === 'superAdmin') {
         unsubUsers = subscribeUsers(setAllUsers);
         unsubLogs = subscribeAuditLogs(setAuditLogs);
       }
     } else {
-      // For public landing page: keep local store subscribers active (0 Firestore reads!)
+      // For public landing page: serve rich local snapshot + IDB cache (0 Firestore reads!)
       unsubStudents = offlineStore.subscribe('students', list => {
         const active = list.filter(s => !s.isDeleted);
         if (active.length > 0) setSafeStudents(active);
@@ -631,6 +728,7 @@ export default function App() {
       unsubAnnouncements();
       unsubClubs();
       unsubClubEnrollments();
+      unsubFeatured();
       unsubStudents();
       unsubSupervisors();
       unsubProjects();
@@ -640,7 +738,7 @@ export default function App() {
       unsubUsers();
       unsubLogs();
     };
-  }, [currentUser?.id, currentUser?.role]);
+  }, [currentUser?.id, currentUser?.role, scopedEntityIds.studentId, scopedEntityIds.supervisorId]);
 
   const handleUpdateCurrentUser = (updatedUser: UserAccount) => {
     setCurrentUser(updatedUser);

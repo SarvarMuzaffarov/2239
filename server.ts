@@ -329,10 +329,204 @@ function tripModelCircuit(modelName: string, err: any) {
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+
+  // Support CLI arguments (e.g. tsx server.ts --port 3000) or default to 3000 in dev
+  let selectedPort = 3000;
+  const portArgIndex = process.argv.indexOf('--port');
+  if (portArgIndex !== -1 && process.argv[portArgIndex + 1]) {
+    const parsed = parseInt(process.argv[portArgIndex + 1], 10);
+    if (!isNaN(parsed) && parsed > 0) {
+      selectedPort = parsed;
+    }
+  } else if (process.env.NODE_ENV === 'production' && process.env.PORT) {
+    selectedPort = Number(process.env.PORT) || 3000;
+  }
+  const PORT = selectedPort;
   const isProd = process.env.NODE_ENV === 'production';
 
-  app.use(express.json());
+  app.use(express.json({ limit: '20mb' }));
+
+  const driveScriptUrl = (process.env.GOOGLE_DRIVE_SCRIPT_URL || '').trim();
+  const driveSecret = (process.env.GOOGLE_DRIVE_SECRET || '').trim();
+
+  // Lightweight LRU cache for downloaded Drive files (up to 24 files / ~40MB) so repeat PDF views hit RAM with 0 Drive calls
+  const driveFileCache = new Map<string, { buffer: Buffer; mimeType: string; fileName: string; cachedAt: number }>();
+  let driveCacheBytes = 0;
+  const MAX_DRIVE_CACHE_BYTES = 40 * 1024 * 1024;
+
+  function cacheDriveFile(fileId: string, entry: { buffer: Buffer; mimeType: string; fileName: string }) {
+    if (entry.buffer.byteLength > 8 * 1024 * 1024) return; // Skip caching single huge files > 8MB
+    if (driveFileCache.has(fileId)) {
+      const old = driveFileCache.get(fileId)!;
+      driveCacheBytes -= old.buffer.byteLength;
+      driveFileCache.delete(fileId);
+    }
+    while (driveCacheBytes + entry.buffer.byteLength > MAX_DRIVE_CACHE_BYTES && driveFileCache.size > 0) {
+      const oldestKey = driveFileCache.keys().next().value;
+      if (!oldestKey) break;
+      const oldest = driveFileCache.get(oldestKey);
+      if (oldest) driveCacheBytes -= oldest.buffer.byteLength;
+      driveFileCache.delete(oldestKey);
+    }
+    driveFileCache.set(fileId, { ...entry, cachedAt: Date.now() });
+    driveCacheBytes += entry.buffer.byteLength;
+  }
+
+  // Google Drive integration status
+  app.get('/api/drive/status', (req, res) => {
+    res.json({
+      configured: Boolean(driveScriptUrl),
+      cacheEntries: driveFileCache.size,
+    });
+  });
+
+  // Upload PDF/image directly to personal Google Drive via Apps Script proxy
+  app.post('/api/drive/upload', async (req, res) => {
+    if (!driveScriptUrl) {
+      return res.json({
+        ok: false,
+        configured: false,
+        fallback: true,
+        message: 'GOOGLE_DRIVE_SCRIPT_URL sozlanmagan.',
+      });
+    }
+
+    const { fileName, mimeType, base64, category } = req.body || {};
+    if (!base64 || typeof base64 !== 'string') {
+      return res.status(400).json({ ok: false, error: 'Fayl ma’lumotlari topilmadi.' });
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+
+      const scriptResp = await fetch(driveScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow',
+        signal: controller.signal,
+        body: JSON.stringify({
+          action: 'upload',
+          secret: driveSecret,
+          fileName: String(fileName || 'hujjat.pdf'),
+          mimeType: String(mimeType || 'application/pdf'),
+          category: String(category || 'other'),
+          base64,
+        }),
+      });
+      clearTimeout(timeout);
+
+      const rawText = await scriptResp.text();
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch {
+        console.warn('Google Drive Apps Script returned non-JSON response (check "Who has access: Anyone").');
+        return res.json({ ok: false, configured: true, fallback: true });
+      }
+
+      if (!parsed || !parsed.ok || !parsed.fileId) {
+        console.warn('Google Drive upload failed, falling back:', parsed?.error || 'unknown');
+        return res.json({ ok: false, configured: true, fallback: true, error: parsed?.error });
+      }
+
+      const fileId = String(parsed.fileId);
+      return res.json({
+        ok: true,
+        configured: true,
+        fileId,
+        fileUrl: `/api/drive/file/${encodeURIComponent(fileId)}`,
+        storagePath: `gdrive://${String(category || 'other')}/${fileId}`,
+        fileName: parsed.fileName || fileName,
+        size: parsed.size,
+      });
+    } catch (err: any) {
+      console.warn('Google Drive upload request error (using fallback):', err?.message || err);
+      return res.json({ ok: false, configured: true, fallback: true });
+    }
+  });
+
+  // Stream cached/proxied file from Google Drive with strong cache headers
+  app.get('/api/drive/file/:fileId', async (req, res) => {
+    const fileId = String(req.params.fileId || '').trim();
+    if (!/^[a-zA-Z0-9_-]{5,120}$/.test(fileId)) {
+      return res.status(400).json({ error: 'Noto‘g‘ri fayl identifikatori.' });
+    }
+
+    const cached = driveFileCache.get(fileId);
+    if (cached) {
+      res.setHeader('Content-Type', cached.mimeType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(cached.fileName)}"`);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(cached.buffer);
+    }
+
+    if (!driveScriptUrl) {
+      return res.status(503).json({ error: 'Google Drive server ulanmagan.' });
+    }
+
+    try {
+      const url = new URL(driveScriptUrl);
+      url.searchParams.set('fileId', fileId);
+      if (driveSecret) url.searchParams.set('secret', driveSecret);
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+      const scriptResp = await fetch(url.toString(), {
+        method: 'GET',
+        redirect: 'follow',
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      const rawText = await scriptResp.text();
+      const parsed = JSON.parse(rawText);
+      if (!parsed || !parsed.ok || !parsed.base64) {
+        return res.status(404).json({ error: parsed?.error || 'Fayl Google Drive xotirasidan topilmadi.' });
+      }
+
+      const buffer = Buffer.from(String(parsed.base64), 'base64');
+      const mimeType = String(parsed.mimeType || 'application/pdf');
+      const fileName = String(parsed.fileName || `${fileId}.pdf`);
+
+      cacheDriveFile(fileId, { buffer, mimeType, fileName });
+
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileName)}"`);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(buffer);
+    } catch (err: any) {
+      console.error('Google Drive proxy download error:', err?.message || err);
+      return res.status(502).json({ error: 'Google Drive xotirasidan faylni yuklab bo‘lmadi.' });
+    }
+  });
+
+  // Delete (trash) a file from Google Drive
+  app.post('/api/drive/delete', async (req, res) => {
+    if (!driveScriptUrl) {
+      return res.json({ ok: false, skipped: true });
+    }
+    const { fileId } = req.body || {};
+    if (!fileId || typeof fileId !== 'string') {
+      return res.status(400).json({ ok: false });
+    }
+    try {
+      driveFileCache.delete(fileId);
+      await fetch(driveScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        redirect: 'follow',
+        body: JSON.stringify({
+          action: 'delete',
+          secret: driveSecret,
+          fileId,
+        }),
+      });
+      return res.json({ ok: true });
+    } catch {
+      return res.json({ ok: false });
+    }
+  });
 
   // Initialize server-side Gemini client if API key is present
   const apiKey = process.env.GEMINI_API_KEY;
@@ -442,6 +636,7 @@ async function startServer() {
     res.json({
       status: 'ok',
       time: new Date().toISOString(),
+      googleDriveConfigured: Boolean(driveScriptUrl),
       circuits: {
         'gemini-3.5-flash-lite': isModelAvailable('gemini-3.5-flash-lite'),
         'gemini-flash-lite-latest': isModelAvailable('gemini-flash-lite-latest'),
@@ -452,7 +647,7 @@ async function startServer() {
 
   if (!isProd) {
     const vite = await createViteServer({
-      server: { middlewareMode: true, port: PORT, host: '0.0.0.0' },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);

@@ -13,6 +13,7 @@ import type {
   AuditLog,
   ClubItem,
   ClubEnrollment,
+  TopStudentAssignment,
 } from '../types';
 import { INITIAL_CLUBS_DATA } from '../data/initialClubsData';
 import { normalizePhone } from './crypto';
@@ -392,6 +393,43 @@ class OfflineStore {
     this.data[key] = Array.from(map.values()) as any;
     this.persistCollection(key);
     this.notify(key);
+  }
+
+  public applyFeaturedStudents(assignments: TopStudentAssignment[]) {
+    if (!Array.isArray(assignments)) return;
+    const assignedMap = new Map(assignments.map(a => [a.studentId, a]));
+    const currentStudents = this.data.students;
+    let changed = false;
+
+    for (let i = 0; i < currentStudents.length; i++) {
+      const s = currentStudents[i];
+      if (!s) continue;
+      const assign = assignedMap.get(s.id);
+      if (assign) {
+        if (!s.isTopStudent || s.topStudentRank !== assign.rank || s.topStudentReason !== assign.reason) {
+          currentStudents[i] = {
+            ...s,
+            isTopStudent: true,
+            topStudentRank: assign.rank,
+            topStudentReason: assign.reason || '',
+          };
+          changed = true;
+        }
+      } else if (s.isTopStudent) {
+        currentStudents[i] = {
+          ...s,
+          isTopStudent: false,
+          topStudentRank: 0,
+          topStudentReason: '',
+        };
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      this.persistCollection('students');
+      this.notify('students');
+    }
   }
 
   // Authentication Helpers

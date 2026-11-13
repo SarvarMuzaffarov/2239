@@ -119,7 +119,7 @@ export const EventParticipantsModal: React.FC<EventParticipantsModalProps> = ({
   const handleExportExcel = async () => {
     try {
       setIsExporting(true);
-      await exportEventParticipantsToExcel(event.id, event.title, [event], supervisors);
+      await exportEventParticipantsToExcel(event.id, event.title, [event], supervisors, registrations);
       onNotify?.('success', 'Ishtirokchilar ro‘yxati Excel faylga muvaffaqiyatli yuklandi.');
     } catch (err: any) {
       onNotify?.('error', err.message || 'Excel eksport qilishda xatolik yuz berdi.');

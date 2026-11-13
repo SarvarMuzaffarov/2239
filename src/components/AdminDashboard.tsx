@@ -773,7 +773,7 @@ export const AdminDashboard: React.FC<Props> = ({
   const handleExportStudents = async () => {
     try {
       setIsExportingStudents(true);
-      await exportStudentsToExcel(supervisors);
+      await exportStudentsToExcel(supervisors, students);
       onNotify('success', 'Barcha iqtidorli talabalar ma’lumotlari Excel formatda yuklab olindi.');
     } catch (err: any) {
       onNotify('error', err.message || 'Excel eksport qilishda xatolik.');

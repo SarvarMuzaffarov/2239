@@ -16,15 +16,27 @@ import type {
 
 /**
  * Exports all students to an Excel (.xlsx) file on demand.
- * Fetches fresh students from Firestore only upon clicking.
+ * Reuses already-loaded in-memory students when provided (0 Firestore reads),
+ * falling back to Firestore only when needed.
  */
-export async function exportStudentsToExcel(supervisors: SupervisorProfile[] = []): Promise<void> {
-  const snap = await getDocs(collection(db, 'students'));
+export async function exportStudentsToExcel(
+  supervisors: SupervisorProfile[] = [],
+  cachedStudents?: StudentProfile[]
+): Promise<void> {
+  let studentList: StudentProfile[] = [];
+  if (Array.isArray(cachedStudents) && cachedStudents.length > 0) {
+    studentList = cachedStudents.filter(s => !s.isDeleted);
+  } else {
+    const snap = await getDocs(collection(db, 'students'));
+    studentList = snap.docs
+      .map(d => ({ id: d.id, ...d.data() } as StudentProfile))
+      .filter(s => !s.isDeleted);
+  }
+
   const supervisorMap = new Map<string, string>();
   supervisors.forEach(s => supervisorMap.set(s.id, s.fullName));
 
-  const rows = snap.docs.map((docSnap, index) => {
-    const data = docSnap.data() as StudentProfile;
+  const rows = studentList.map((data, index) => {
     const supName =
       (data.supervisorId ? supervisorMap.get(data.supervisorId) : '') ||
       data.customSupervisorName ||
@@ -68,7 +80,8 @@ export async function exportEventParticipantsToExcel(
   eventId?: string,
   eventTitle?: string,
   events: EventItem[] = [],
-  supervisors: SupervisorProfile[] = []
+  supervisors: SupervisorProfile[] = [],
+  cachedRegistrations?: EventRegistration[]
 ): Promise<void> {
   const supervisorMap = new Map<string, string>();
   supervisors.forEach(s => supervisorMap.set(s.id, s.fullName));
@@ -76,14 +89,19 @@ export async function exportEventParticipantsToExcel(
   const eventMap = new Map<string, string>();
   events.forEach(e => eventMap.set(e.id, e.title));
 
-  let q = query(collection(db, 'eventRegistrations'));
-  if (eventId) {
-    q = query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId));
+  let regList: EventRegistration[] = [];
+  if (Array.isArray(cachedRegistrations) && cachedRegistrations.length > 0) {
+    regList = eventId ? cachedRegistrations.filter(r => r.eventId === eventId) : cachedRegistrations;
+  } else {
+    let q = query(collection(db, 'eventRegistrations'));
+    if (eventId) {
+      q = query(collection(db, 'eventRegistrations'), where('eventId', '==', eventId));
+    }
+    const snap = await getDocs(q);
+    regList = snap.docs.map(d => d.data() as EventRegistration);
   }
 
-  const snap = await getDocs(q);
-  const rows = snap.docs.map((docSnap, index) => {
-    const r = docSnap.data() as EventRegistration;
+  const rows = regList.map((r, index) => {
     const evTitle = eventTitle || eventMap.get(r.eventId) || 'Tadbir';
     const supName =
       (r.supervisorId ? supervisorMap.get(r.supervisorId) : '') ||
@@ -132,7 +150,8 @@ export async function exportEventParticipantsToExcel(
  */
 export async function exportCompetitionApplicationsToExcel(
   events: EventItem[] = [],
-  supervisors: SupervisorProfile[] = []
+  supervisors: SupervisorProfile[] = [],
+  cachedRegistrations?: EventRegistration[]
 ): Promise<void> {
   const supervisorMap = new Map<string, string>();
   supervisors.forEach(s => supervisorMap.set(s.id, s.fullName));
@@ -140,12 +159,18 @@ export async function exportCompetitionApplicationsToExcel(
   const eventMap = new Map<string, string>();
   events.forEach(e => eventMap.set(e.id, e.title));
 
-  const snap = await getDocs(collection(db, 'eventRegistrations'));
+  let regList: EventRegistration[] = [];
+  if (Array.isArray(cachedRegistrations) && cachedRegistrations.length > 0) {
+    regList = cachedRegistrations;
+  } else {
+    const snap = await getDocs(collection(db, 'eventRegistrations'));
+    regList = snap.docs.map(d => d.data() as EventRegistration);
+  }
+
   const rows: any[] = [];
   let counter = 1;
 
-  snap.docs.forEach(docSnap => {
-    const r = docSnap.data() as EventRegistration;
+  regList.forEach(r => {
     // Filter registrations that have an attached project or competition entry
     if (r.projectId || r.projectTitle) {
       const supName =

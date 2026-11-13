@@ -50,6 +50,83 @@ import { isValidDirection, canonicalizeDirection, getDirectionFilterVariants } f
 import { matchesStudentSearch } from '../lib/searchUtils';
 import { offlineStore } from '../lib/offlineStore';
 import { generateNextCertificateNumber } from '../lib/certificateNumberHelper';
+import { enqueueSyncOp, dequeueSyncOp } from '../lib/syncOutbox';
+
+export interface SubscriptionScope {
+  role?: UserRole;
+  userId?: string;
+  studentId?: string;
+  supervisorId?: string;
+}
+
+const DELTA_SYNC_PREFIX = 'iqtidor_delta_v1_';
+const DELTA_OVERLAP_MS = 5 * 60 * 1000; // 5 minute safety overlap
+const MAX_DELTA_AGE_MS = 14 * 24 * 60 * 60 * 1000; // Periodic full resync every 14 days
+
+function getDeltaLastSync(collectionName: string, scopeKey: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${DELTA_SYNC_PREFIX}${collectionName}_${scopeKey}`);
+    if (!raw) return null;
+    const ms = Date.parse(raw);
+    if (!Number.isFinite(ms) || Date.now() - ms > MAX_DELTA_AGE_MS) {
+      return null;
+    }
+    return new Date(Math.max(0, ms - DELTA_OVERLAP_MS)).toISOString();
+  } catch {
+    return null;
+  }
+}
+
+function markDeltaSynced(collectionName: string, scopeKey: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(`${DELTA_SYNC_PREFIX}${collectionName}_${scopeKey}`, new Date().toISOString());
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+function buildUnfilteredDeltaQuery(collectionName: string, scopeKey: string) {
+  const colRef = collection(db, collectionName);
+  const localItems = offlineStore.get(collectionName as any);
+  const lastSyncOverlap = Array.isArray(localItems) && localItems.length > 0
+    ? getDeltaLastSync(collectionName, scopeKey)
+    : null;
+  if (lastSyncOverlap) {
+    return query(colRef, where('updatedAt', '>=', lastSyncOverlap));
+  }
+  return colRef;
+}
+
+async function persistSetWithOutbox(
+  collectionName: string,
+  docId: string,
+  payload: Record<string, any>,
+  merge: boolean = true,
+  timeoutMs: number = 6000
+): Promise<void> {
+  const ref = doc(db, collectionName, docId);
+  try {
+    await withFirestoreTimeout(
+      setDoc(ref, payload, { merge }),
+      timeoutMs,
+      `Ma’lumotni (${collectionName}) saqlashda vaqt tugadi.`
+    );
+    dequeueSyncOp(collectionName, docId).catch(() => {});
+  } catch (err) {
+    enqueueSyncOp({
+      collectionName,
+      docId,
+      op: 'set',
+      data: payload,
+      merge,
+    }).catch(() => {});
+    if (!isQuotaOrOfflineError(err) && !(err instanceof Error && err.message.includes('vaqt tugadi'))) {
+      console.warn(`Firestore write fallback queued in outbox (${collectionName}/${docId}):`, err);
+    }
+  }
+}
 
 // Helper for timeout protection on async calls
 async function withFirestoreTimeout<T>(
@@ -117,17 +194,36 @@ export async function logAuditAction(
   }
 }
 
-function handleSubscriptionError(context: string, error: unknown) {
+export function isQuotaOrOfflineError(error: unknown): boolean {
+  if (!error) return false;
   const code = (error as any)?.code;
-  if (code === 'unavailable' || String(error).includes('offline') || String(error).includes('unavailable') || code === 'resource-exhausted') {
-    console.warn(`[Firestore Real-time] ${context} offline/limit/qayta ulanmoqda...`);
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    code === 'unavailable' ||
+    code === 'resource-exhausted' ||
+    msg.includes('offline') ||
+    msg.includes('unavailable') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Free daily read units') ||
+    msg.includes('quota') ||
+    msg.includes('Quota')
+  );
+}
+
+function handleSubscriptionError(context: string, error: unknown) {
+  if (isQuotaOrOfflineError(error)) {
+    console.warn(`[Firestore Real-time] ${context} kvota limiti yoki oflayn rejimda. Ma'lumotlar lokal xotiradan (offlineStore) ko‘rsatilmoqda.`);
   } else {
     console.warn(`[Firestore Real-time] ${context}:`, error);
   }
 }
 
 // ----------------- STUDENTS -----------------
-export function subscribeStudents(onUpdate: (students: StudentProfile[]) => void): Unsubscribe {
+export function subscribeStudents(
+  onUpdate: (students: StudentProfile[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   // 1. Immediately subscribe to local store so data renders instantly with zero delay
   const unsubLocal = offlineStore.subscribe('students', list => {
     const active = list.filter(s => !s.isDeleted);
@@ -135,19 +231,35 @@ export function subscribeStudents(onUpdate: (students: StudentProfile[]) => void
     onUpdate(active);
   });
 
-  // 2. Sync from Firestore if available
+  // 2. Scoped & delta-synced Firestore listener
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'students');
+    let fsQuery: any;
+    let deltaKey: string | null = null;
+
+    if (scope?.role === 'student') {
+      if (!scope.userId) return unsubLocal;
+      fsQuery = query(collection(db, 'students'), where('userId', '==', scope.userId));
+    } else if (scope?.role === 'supervisor') {
+      if (!scope.supervisorId) return unsubLocal;
+      fsQuery = query(collection(db, 'students'), where('supervisorId', '==', scope.supervisorId));
+    } else {
+      deltaKey = 'all';
+      fsQuery = buildUnfilteredDeltaQuery('students', deltaKey);
+    }
+
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: StudentProfile[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as StudentProfile);
           });
           offlineStore.syncFromFirestore('students', list);
+        }
+        if (deltaKey && !snapshot.metadata?.fromCache) {
+          markDeltaSynced('students', deltaKey);
         }
       },
       error => {
@@ -184,12 +296,7 @@ export async function updateStudentProfile(
 
   offlineStore.saveItem('students', { id: studentId, ...cleanedUpdates });
 
-  try {
-    const ref = doc(db, 'students', studentId);
-    await setDoc(ref, cleanedUpdates, { merge: true });
-  } catch (err) {
-    console.warn('Firestore updateStudentProfile note (saved in local store):', err);
-  }
+  await persistSetWithOutbox('students', studentId, cleanedUpdates, true, 8000);
 
   if (actor) {
     await logAuditAction(
@@ -208,23 +315,17 @@ export async function assignStudentSupervisor(
   actor: { id: string; fullName: string; role: UserRole }
 ) {
   const nowIso = new Date().toISOString();
-  offlineStore.saveItem('students', {
-    id: studentId,
+  const payload = {
     supervisorId,
     customSupervisorName: '',
     updatedAt: nowIso,
+  };
+  offlineStore.saveItem('students', {
+    id: studentId,
+    ...payload,
   });
 
-  try {
-    const ref = doc(db, 'students', studentId);
-    await setDoc(ref, {
-      supervisorId,
-      customSupervisorName: '',
-      updatedAt: nowIso,
-    }, { merge: true });
-  } catch (err) {
-    console.warn('Firestore assignStudentSupervisor note (saved locally):', err);
-  }
+  await persistSetWithOutbox('students', studentId, payload, true, 8000);
 
   await logAuditAction(
     actor,
@@ -247,7 +348,10 @@ export async function deleteStudent(
 }
 
 // ----------------- SUPERVISORS -----------------
-export function subscribeSupervisors(onUpdate: (supervisors: SupervisorProfile[]) => void): Unsubscribe {
+export function subscribeSupervisors(
+  onUpdate: (supervisors: SupervisorProfile[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('supervisors', list => {
     const active = list.filter(s => !s.isDeleted);
     active.sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
@@ -256,16 +360,20 @@ export function subscribeSupervisors(onUpdate: (supervisors: SupervisorProfile[]
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'supervisors');
+    const deltaKey = scope?.role || 'all';
+    const fsQuery = buildUnfilteredDeltaQuery('supervisors', deltaKey);
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: SupervisorProfile[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as SupervisorProfile);
           });
           offlineStore.syncFromFirestore('supervisors', list);
+        }
+        if (!snapshot.metadata?.fromCache) {
+          markDeltaSynced('supervisors', deltaKey);
         }
       },
       error => {
@@ -287,19 +395,16 @@ export async function createSupervisorDoc(
   actor: { id: string; fullName: string; role: UserRole }
 ): Promise<string> {
   const ref = doc(collection(db, 'supervisors'));
+  const nowIso = new Date().toISOString();
   const supervisor: SupervisorProfile = {
     ...data,
     id: ref.id,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('supervisors', supervisor);
-
-  try {
-    await setDoc(ref, supervisor);
-  } catch (err) {
-    console.warn('Firestore createSupervisorDoc note (saved locally):', err);
-  }
+  await persistSetWithOutbox('supervisors', ref.id, supervisor, false, 6000);
 
   await logAuditAction(
     actor,
@@ -322,13 +427,7 @@ export async function updateSupervisorDoc(
   });
 
   offlineStore.saveItem('supervisors', { id, ...cleanedUpdates });
-
-  try {
-    const ref = doc(db, 'supervisors', id);
-    await setDoc(ref, cleanedUpdates, { merge: true });
-  } catch (err) {
-    console.warn('Firestore updateSupervisorDoc note (saved locally):', err);
-  }
+  await persistSetWithOutbox('supervisors', id, cleanedUpdates, true, 6000);
 
   await logAuditAction(
     actor,
@@ -354,7 +453,8 @@ export async function deleteSupervisorDoc(
 
 // ----------------- PROJECTS & STARTUPS -----------------
 export function subscribeProjectsAndStartups(
-  onUpdate: (items: ProjectOrStartup[]) => void
+  onUpdate: (items: ProjectOrStartup[]) => void,
+  scope?: SubscriptionScope
 ): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('projects', list => {
     const active = list.filter(p => !p.isDeleted);
@@ -364,16 +464,29 @@ export function subscribeProjectsAndStartups(
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'projects');
+    let fsQuery: any;
+    let deltaKey: string | null = null;
+
+    if (scope?.role === 'student') {
+      if (!scope.studentId) return unsubLocal;
+      fsQuery = query(collection(db, 'projects'), where('studentId', '==', scope.studentId));
+    } else {
+      deltaKey = scope?.role === 'supervisor' ? 'sup' : 'all';
+      fsQuery = buildUnfilteredDeltaQuery('projects', deltaKey);
+    }
+
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: ProjectOrStartup[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as ProjectOrStartup);
           });
           offlineStore.syncFromFirestore('projects', list);
+        }
+        if (deltaKey && !snapshot.metadata?.fromCache) {
+          markDeltaSynced('projects', deltaKey);
         }
       },
       error => {
@@ -394,24 +507,17 @@ export async function createProjectOrStartup(
   data: Omit<ProjectOrStartup, 'id' | 'createdAt' | 'status'>
 ): Promise<string> {
   const ref = doc(collection(db, 'projects'));
+  const nowIso = new Date().toISOString();
   const item: ProjectOrStartup = {
     ...data,
     id: ref.id,
     status: 'Kutilmoqda',
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('projects', item);
-
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, item),
-      4000,
-      'Loyiha/Startap saqlandi (kutilmoqda).'
-    );
-  } catch (err) {
-    console.warn('Firestore createProjectOrStartup note (saved locally):', err);
-  }
+  await persistSetWithOutbox('projects', ref.id, removeUndefinedFields(item), false, 5000);
 
   return ref.id;
 }
@@ -462,7 +568,6 @@ export async function updateProjectStatus(
   const cleanNotes = (notes || '').trim();
   const timestampIso = new Date().toISOString();
 
-  const ref = doc(db, 'projects', id);
   const updatePayload = removeUndefinedFields({
     status,
     reviewNotes: cleanNotes,
@@ -472,11 +577,10 @@ export async function updateProjectStatus(
     updatedAt: timestampIso,
   });
 
-  await withFirestoreTimeout(
-    updateDoc(ref, updatePayload),
-    12000,
-    'Loyiha holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
-  );
+  const existing = offlineStore.getById('projects', id) || {};
+  offlineStore.saveItem('projects', { ...existing, id, ...updatePayload });
+
+  await persistSetWithOutbox('projects', id, updatePayload, true, 10000);
 
   await logAuditAction(
     { id: cleanAdminUid, fullName: cleanAdminName, role: adminRole },
@@ -541,7 +645,10 @@ export async function deleteProjectOrStartup(
 }
 
 // ----------------- ACHIEVEMENTS -----------------
-export function subscribeAchievements(onUpdate: (items: Achievement[]) => void): Unsubscribe {
+export function subscribeAchievements(
+  onUpdate: (items: Achievement[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('achievements', list => {
     const active = list.filter(a => !a.isDeleted);
     active.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -550,16 +657,29 @@ export function subscribeAchievements(onUpdate: (items: Achievement[]) => void):
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'achievements');
+    let fsQuery: any;
+    let deltaKey: string | null = null;
+
+    if (scope?.role === 'student') {
+      if (!scope.studentId) return unsubLocal;
+      fsQuery = query(collection(db, 'achievements'), where('studentId', '==', scope.studentId));
+    } else {
+      deltaKey = scope?.role === 'supervisor' ? 'sup' : 'all';
+      fsQuery = buildUnfilteredDeltaQuery('achievements', deltaKey);
+    }
+
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: Achievement[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as Achievement);
           });
           offlineStore.syncFromFirestore('achievements', list);
+        }
+        if (deltaKey && !snapshot.metadata?.fromCache) {
+          markDeltaSynced('achievements', deltaKey);
         }
       },
       error => {
@@ -580,24 +700,17 @@ export async function createAchievement(
   data: Omit<Achievement, 'id' | 'createdAt' | 'status'>
 ): Promise<string> {
   const ref = doc(collection(db, 'achievements'));
+  const nowIso = new Date().toISOString();
   const item: Achievement = {
     ...data,
     id: ref.id,
     status: 'Kutilmoqda',
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('achievements', item);
-
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, item),
-      4000,
-      'Yutuq saqlandi (kutilmoqda).'
-    );
-  } catch (err) {
-    console.warn('Firestore createAchievement note (saved locally):', err);
-  }
+  await persistSetWithOutbox('achievements', ref.id, removeUndefinedFields(item), false, 5000);
 
   return ref.id;
 }
@@ -647,7 +760,6 @@ export async function updateAchievementStatus(
     notes = '';
   }
 
-  // Requirement 9: If Admin or Super Admin cannot be determined, throw a clear error instead of writing invalid data or calling updateDoc()
   if (!adminUid || !adminUid.trim()) {
     throw new Error(
       "Admin yoki Super Admin identifikatori (UID) aniqlanmadi. Noto‘g‘ri ma’lumot yozilmasligi uchun tasdiqlash to‘xtatildi. Iltimos, tizimga qayta kiring."
@@ -659,21 +771,19 @@ export async function updateAchievementStatus(
   const cleanNotes = (notes || '').trim();
   const timestampIso = new Date().toISOString();
 
-  const ref = doc(db, 'achievements', id);
   const updatePayload = removeUndefinedFields({
     status,
     reviewNotes: cleanNotes,
     reviewedAt: timestampIso,
-    reviewedBy: cleanAdminUid, // Stores the real Admin/Super Admin UID
-    reviewedByName: cleanAdminName, // Stores the Admin full name
+    reviewedBy: cleanAdminUid,
+    reviewedByName: cleanAdminName,
     updatedAt: timestampIso,
   });
 
-  await withFirestoreTimeout(
-    updateDoc(ref, updatePayload),
-    12000,
-    'Yutuq holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
-  );
+  const existing = offlineStore.getById('achievements', id) || {};
+  offlineStore.saveItem('achievements', { ...existing, id, ...updatePayload });
+
+  await persistSetWithOutbox('achievements', id, updatePayload, true, 10000);
 
   await logAuditAction(
     { id: cleanAdminUid, fullName: cleanAdminName, role: adminRole },
@@ -692,7 +802,10 @@ export async function deleteAchievement(
 }
 
 // ----------------- CERTIFICATES -----------------
-export function subscribeCertificates(onUpdate: (items: CertificateItem[]) => void): Unsubscribe {
+export function subscribeCertificates(
+  onUpdate: (items: CertificateItem[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('certificates', list => {
     const active = list.filter(c => !c.isDeleted);
     active.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -701,16 +814,29 @@ export function subscribeCertificates(onUpdate: (items: CertificateItem[]) => vo
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'certificates');
+    let fsQuery: any;
+    let deltaKey: string | null = null;
+
+    if (scope?.role === 'student') {
+      if (!scope.studentId) return unsubLocal;
+      fsQuery = query(collection(db, 'certificates'), where('studentId', '==', scope.studentId));
+    } else {
+      deltaKey = scope?.role === 'supervisor' ? 'sup' : 'all';
+      fsQuery = buildUnfilteredDeltaQuery('certificates', deltaKey);
+    }
+
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: CertificateItem[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as CertificateItem);
           });
           offlineStore.syncFromFirestore('certificates', list);
+        }
+        if (deltaKey && !snapshot.metadata?.fromCache) {
+          markDeltaSynced('certificates', deltaKey);
         }
       },
       error => {
@@ -732,23 +858,16 @@ export async function createCertificateDoc(
   actor?: { id: string; fullName: string; role: UserRole }
 ): Promise<string> {
   const ref = doc(collection(db, 'certificates'));
+  const nowIso = new Date().toISOString();
   const cert: CertificateItem = {
     ...data,
     id: ref.id,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('certificates', cert);
-
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, cert),
-      4000,
-      'Sertifikat saqlandi (kutilmoqda).'
-    );
-  } catch (err) {
-    console.warn('Firestore createCertificateDoc note (saved locally):', err);
-  }
+  await persistSetWithOutbox('certificates', ref.id, removeUndefinedFields(cert), false, 5000);
 
   if (actor) {
     await logAuditAction(
@@ -795,7 +914,6 @@ export async function updateCertificateStatus(
   const cleanAdminName = (adminName || 'Admin').trim();
   const timestampIso = new Date().toISOString();
 
-  const ref = doc(db, 'certificates', id);
   const updatePayload = removeUndefinedFields({
     status,
     reviewedAt: timestampIso,
@@ -811,15 +929,7 @@ export async function updateCertificateStatus(
     ...updatePayload,
   });
 
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, updatePayload, { merge: true }),
-      8000,
-      'Sertifikat holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
-    );
-  } catch (err) {
-    console.warn('Firestore updateCertificateStatus note (saved to offline store):', err);
-  }
+  await persistSetWithOutbox('certificates', id, updatePayload, true, 8000);
 
   await logAuditAction(
     { id: cleanAdminUid, fullName: cleanAdminName, role: adminRole },
@@ -907,7 +1017,10 @@ export async function getCertificateByNumber(certInput: string): Promise<Certifi
 }
 
 // ----------------- LANGUAGE CERTIFICATES -----------------
-export function subscribeLanguageCertificates(onUpdate: (items: LanguageCertificate[]) => void): Unsubscribe {
+export function subscribeLanguageCertificates(
+  onUpdate: (items: LanguageCertificate[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('languageCertificates', list => {
     const active = list.filter(c => !c.isDeleted);
     active.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -916,16 +1029,29 @@ export function subscribeLanguageCertificates(onUpdate: (items: LanguageCertific
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'languageCertificates');
+    let fsQuery: any;
+    let deltaKey: string | null = null;
+
+    if (scope?.role === 'student') {
+      if (!scope.studentId) return unsubLocal;
+      fsQuery = query(collection(db, 'languageCertificates'), where('studentId', '==', scope.studentId));
+    } else {
+      deltaKey = scope?.role === 'supervisor' ? 'sup' : 'all';
+      fsQuery = buildUnfilteredDeltaQuery('languageCertificates', deltaKey);
+    }
+
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: LanguageCertificate[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as LanguageCertificate);
           });
           offlineStore.syncFromFirestore('languageCertificates', list);
+        }
+        if (deltaKey && !snapshot.metadata?.fromCache) {
+          markDeltaSynced('languageCertificates', deltaKey);
         }
       },
       error => {
@@ -947,23 +1073,16 @@ export async function createLanguageCertificate(
   actor?: { id: string; fullName: string; role: UserRole }
 ): Promise<string> {
   const ref = doc(collection(db, 'languageCertificates'));
+  const nowIso = new Date().toISOString();
   const cert: LanguageCertificate = {
     ...data,
     id: ref.id,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('languageCertificates', cert);
-
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, cert),
-      4000,
-      'Til sertifikati saqlandi (kutilmoqda).'
-    );
-  } catch (err) {
-    console.warn('Firestore createLanguageCertificate note (saved locally):', err);
-  }
+  await persistSetWithOutbox('languageCertificates', ref.id, removeUndefinedFields(cert), false, 5000);
 
   if (actor) {
     await logAuditAction(
@@ -990,22 +1109,22 @@ export async function updateLanguageCertificateStatus(
   const cleanAdminUid = adminUser.id || 'admin-system';
   const cleanAdminName = adminUser.fullName || 'Administrator';
   const adminRole = adminUser.role || ('admin' as UserRole);
+  const cleanId = id.trim();
+  const nowIso = new Date().toISOString();
 
-  const ref = doc(db, 'languageCertificates', id.trim());
   const updatePayload: Record<string, any> = {
     status,
-    reviewedAt: new Date().toISOString(),
+    reviewedAt: nowIso,
     reviewedBy: cleanAdminUid,
     reviewedByName: cleanAdminName,
     reviewNotes: notes || '',
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowIso,
   };
 
-  await withFirestoreTimeout(
-    updateDoc(ref, updatePayload),
-    12000,
-    'Til sertifikati holatini yangilashda vaqt tugadi. Qayta urinib ko‘ring.'
-  );
+  const existing = offlineStore.getById('languageCertificates', cleanId) || {};
+  offlineStore.saveItem('languageCertificates', { ...existing, id: cleanId, ...updatePayload });
+
+  await persistSetWithOutbox('languageCertificates', cleanId, updatePayload, true, 10000);
 
   await logAuditAction(
     { id: cleanAdminUid, fullName: cleanAdminName, role: adminRole },
@@ -1122,16 +1241,19 @@ export function subscribeEvents(onUpdate: (items: EventItem[]) => void): Unsubsc
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'events');
+    const fsQuery = buildUnfilteredDeltaQuery('events', 'all');
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: EventItem[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as EventItem);
           });
           offlineStore.syncFromFirestore('events', list);
+        }
+        if (!snapshot.metadata?.fromCache) {
+          markDeltaSynced('events', 'all');
         }
       },
       error => {
@@ -1158,23 +1280,20 @@ export async function createEventDoc(
     : { id: actorOrId.id, fullName: actorOrId.fullName, role: actorOrId.role || ('admin' as UserRole) };
 
   const ref = doc(collection(db, 'events'));
+  const nowIso = new Date().toISOString();
   const ev: EventItem = {
     ...data,
     id: ref.id,
     participantIds: [],
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
     createdBy: actor.fullName,
   };
 
   const cleanEv = removeUndefinedFields(ev);
 
   offlineStore.saveItem('events', ev);
-
-  try {
-    await setDoc(ref, cleanEv);
-  } catch (err) {
-    console.warn('Firestore createEventDoc note (saved locally):', err);
-  }
+  await persistSetWithOutbox('events', ref.id, cleanEv, false, 6000);
 
   await logAuditAction(
     actor,
@@ -1502,16 +1621,19 @@ export function subscribeAnnouncements(onUpdate: (items: Announcement[]) => void
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'announcements');
+    const fsQuery = buildUnfilteredDeltaQuery('announcements', 'all');
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: Announcement[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
           });
           offlineStore.syncFromFirestore('announcements', list);
+        }
+        if (!snapshot.metadata?.fromCache) {
+          markDeltaSynced('announcements', 'all');
         }
       },
       error => {
@@ -1538,19 +1660,16 @@ export async function createAnnouncementDoc(
     : { id: actorOrId.id, fullName: actorOrId.fullName, role: actorOrId.role || ('admin' as UserRole) };
 
   const ref = doc(collection(db, 'announcements'));
+  const nowIso = new Date().toISOString();
   const ann: Announcement = {
     ...data,
     id: ref.id,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('announcements', ann);
-
-  try {
-    await setDoc(ref, ann);
-  } catch (err) {
-    console.warn('Firestore createAnnouncementDoc note (saved locally):', err);
-  }
+  await persistSetWithOutbox('announcements', ref.id, removeUndefinedFields(ann), false, 6000);
 
   await logAuditAction(
     actor,
@@ -1728,9 +1847,9 @@ export function subscribeAuditLogs(onUpdate: (logs: AuditLog[]) => void): Unsubs
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'auditLogs');
+    const q = query(collection(db, 'auditLogs'), orderBy('timestamp', 'desc'), limit(50));
     unsubFirestore = onSnapshot(
-      colRef,
+      q,
       snapshot => {
         if (!snapshot.empty) {
           const list: AuditLog[] = [];
@@ -1763,16 +1882,19 @@ export function subscribeUsers(onUpdate: (users: UserAccount[]) => void): Unsubs
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'users');
+    const fsQuery = buildUnfilteredDeltaQuery('users', 'admin');
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: UserAccount[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as UserAccount);
           });
           offlineStore.syncFromFirestore('users', list);
+        }
+        if (!snapshot.metadata?.fromCache) {
+          markDeltaSynced('users', 'admin');
         }
       },
       error => {
@@ -1924,13 +2046,20 @@ export const deleteStudentProfile = async (
 
   let resolvedUserId = userId || '';
   if (!resolvedUserId) {
-    try {
-      const studentSnap = await getDoc(doc(db, 'students', studentId));
-      if (studentSnap.exists()) {
-        resolvedUserId = studentSnap.data()?.userId || '';
+    const local = offlineStore.getById('students', studentId);
+    if (local?.userId) {
+      resolvedUserId = local.userId;
+    } else {
+      try {
+        const studentSnap = await getDoc(doc(db, 'students', studentId));
+        if (studentSnap.exists()) {
+          resolvedUserId = studentSnap.data()?.userId || '';
+        }
+      } catch (e) {
+        if (!isQuotaOrOfflineError(e)) {
+          console.warn('Could not fetch student doc for userId:', e);
+        }
       }
-    } catch (e) {
-      console.warn('Could not fetch student doc for userId:', e);
     }
   }
 
@@ -2041,6 +2170,7 @@ export async function createOfficialCertificate(
   }
 
   const ref = doc(collection(db, 'certificates'));
+  const nowIso = new Date().toISOString();
 
   const cert: CertificateItem = {
     id: ref.id,
@@ -2053,7 +2183,8 @@ export async function createOfficialCertificate(
     issueDate: data.issueDate,
     status: 'Tasdiqlangan',
     isOfficialGenerated: true,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
     ...(data.documentType ? { documentType: data.documentType } : {}),
     ...(data.subtitle ? { subtitle: data.subtitle } : {}),
     ...(data.presentedToText ? { presentedToText: data.presentedToText } : {}),
@@ -2075,14 +2206,13 @@ export async function createOfficialCertificate(
     ...(data.backgroundPattern ? { backgroundPattern: data.backgroundPattern } : {}),
   };
 
-  await setDoc(ref, cert);
-
-  // Sync to offline store immediately
   try {
     offlineStore.saveItem('certificates', cert);
   } catch (err) {
     console.warn('Error saving to offlineStore:', err);
   }
+
+  await persistSetWithOutbox('certificates', ref.id, removeUndefinedFields(cert), false, 8000);
 
   await logAuditAction(
     { id: actorId, fullName: actorName, role: 'admin' },
@@ -2237,11 +2367,23 @@ export async function updateStudentFullByAdmin(
   }
 
   const studentRef = doc(db, 'students', studentId);
-  const studentSnap = await getDoc(studentRef);
-  if (!studentSnap.exists()) {
+  const localStudent = offlineStore.getById('students', studentId);
+  let currentStudent: StudentProfile | null = localStudent || null;
+
+  if (!currentStudent) {
+    try {
+      const studentSnap = await getDoc(studentRef);
+      if (studentSnap.exists()) {
+        currentStudent = studentSnap.data() as StudentProfile;
+      }
+    } catch (e) {
+      if (!isQuotaOrOfflineError(e)) throw e;
+    }
+  }
+
+  if (!currentStudent) {
     throw new Error("Talaba profili topilmadi.");
   }
-  const currentStudent = studentSnap.data() as StudentProfile;
 
   const normalizedPhone = normalizePhone(data.phone);
   if (!isValidUzbekPhone(normalizedPhone)) {
@@ -2250,9 +2392,8 @@ export async function updateStudentFullByAdmin(
 
   // If phone changed, verify uniqueness
   if (normalizedPhone !== currentStudent.phone) {
-    const qPhone = query(collection(db, 'users'), where('phone', '==', normalizedPhone), limit(1));
-    const snapPhone = await getDocs(qPhone);
-    if (!snapPhone.empty && snapPhone.docs[0].id !== currentStudent.userId) {
+    const existingUserWithPhone = offlineStore.findUserByPhone(normalizedPhone);
+    if (existingUserWithPhone && existingUserWithPhone.id !== currentStudent.userId) {
       throw new Error("Ushbu telefon raqam bilan tizimda boshqa foydalanuvchi mavjud.");
     }
   }
@@ -2277,13 +2418,41 @@ export async function updateStudentFullByAdmin(
     studentUpdates.photoURL = data.avatarUrl;
   }
 
-  await setDoc(studentRef, studentUpdates, { merge: true });
+  // 1. Save immediately to offlineStore and IndexedDB
+  offlineStore.saveItem('students', {
+    ...currentStudent,
+    ...studentUpdates,
+    id: studentId,
+  });
+
+  // 2. Persist to Firestore with quota error tolerance
+  try {
+    await withFirestoreTimeout(
+      setDoc(studentRef, studentUpdates, { merge: true }),
+      8000
+    );
+  } catch (err: any) {
+    if (!isQuotaOrOfflineError(err)) {
+      throw err;
+    }
+    console.warn('Firestore updateStudentProfile saved locally due to quota/offline:', err);
+  }
 
   // Update corresponding user document if exists
   if (currentStudent.userId) {
     const userRef = doc(db, 'users', currentStudent.userId);
-    const userSnap = await getDoc(userRef);
-    if (userSnap.exists()) {
+    const localUser = offlineStore.getById('users', currentStudent.userId);
+    let userExists = Boolean(localUser);
+    if (!userExists) {
+      try {
+        const uSnap = await getDoc(userRef);
+        userExists = uSnap.exists();
+      } catch (e) {
+        if (!isQuotaOrOfflineError(e)) throw e;
+      }
+    }
+
+    if (userExists) {
       const userUpdates: any = {
         fullName: data.fullName.trim(),
         phone: normalizedPhone,
@@ -2305,7 +2474,6 @@ export async function updateStudentFullByAdmin(
         userUpdates.passwordHash = passwordHash;
         userUpdates.salt = salt;
 
-        // Audit log: student password updated (Never log the password itself!)
         await logAuditAction(
           actor,
           "student password updated",
@@ -2315,7 +2483,20 @@ export async function updateStudentFullByAdmin(
         );
       }
 
-      await setDoc(userRef, userUpdates, { merge: true });
+      if (localUser) {
+        offlineStore.saveItem('users', {
+          ...localUser,
+          ...userUpdates,
+        });
+      }
+
+      try {
+        await setDoc(userRef, userUpdates, { merge: true });
+      } catch (err: any) {
+        if (!isQuotaOrOfflineError(err)) {
+          console.warn('User doc update error:', err);
+        }
+      }
     }
   }
 
@@ -2723,24 +2904,18 @@ export async function softDeleteDocument(
 
   offlineStore.deleteItem(collectionName as any, id, true);
 
-  try {
-    await withFirestoreTimeout(
-      setDoc(
-        ref,
-        {
-          isDeleted: true,
-          deletedAt: now,
-          deletedBy: actorName,
-          updatedAt: now,
-        },
-        { merge: true }
-      ),
-      5000,
-      `${entityLabel}ni o'chirishda xatolik yuz berdi.`
-    );
-  } catch (err) {
-    console.warn(`Firestore softDeleteDocument note for ${collectionName}/${id}:`, err);
-  }
+  await persistSetWithOutbox(
+    collectionName,
+    id,
+    {
+      isDeleted: true,
+      deletedAt: now,
+      deletedBy: actorName,
+      updatedAt: now,
+    },
+    true,
+    5000
+  );
 
   const actorObj =
     actor && typeof actor === 'object' && actor.id
@@ -3484,6 +3659,7 @@ export async function saveTopActiveStudents(
       ),
       8000
     );
+    offlineStore.applyFeaturedStudents(assignments);
   } catch (err: any) {
     console.warn('Could not save featuredStudents setting document:', err?.message || err);
   }
@@ -3509,9 +3685,43 @@ export async function saveTopActiveStudents(
   }
 }
 
+/**
+ * Real-time listener for settings/featuredStudents
+ * Ensures ALL devices (phones, tablets, PCs, guests and authenticated users) see the EXACT same Top-3 students.
+ */
+export function subscribeFeaturedStudents(
+  onUpdate: (assignments: TopStudentAssignment[]) => void
+): Unsubscribe {
+  let unsub = () => {};
+  try {
+    const settingsRef = doc(db, 'settings', 'featuredStudents');
+    unsub = onSnapshot(
+      settingsRef,
+      snap => {
+        if (snap.exists()) {
+          const data = snap.data();
+          if (Array.isArray(data.assignments)) {
+            offlineStore.applyFeaturedStudents(data.assignments);
+            onUpdate(data.assignments);
+          }
+        }
+      },
+      err => {
+        handleSubscriptionError('featuredStudents', err);
+      }
+    );
+  } catch (err) {
+    handleSubscriptionError('featuredStudents', err);
+  }
+  return unsub;
+}
+
 // ----------------- EXTRACURRICULAR CLUBS (TO'GARAKLAR) -----------------
 
-export function subscribeClubs(onUpdate: (items: ClubItem[]) => void): Unsubscribe {
+export function subscribeClubs(
+  onUpdate: (items: ClubItem[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('clubs', list => {
     const active = list.filter(c => !c.isDeleted);
     active.sort((a, b) => (a.orderNumber || 999) - (b.orderNumber || 999));
@@ -3520,21 +3730,25 @@ export function subscribeClubs(onUpdate: (items: ClubItem[]) => void): Unsubscri
 
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'clubs');
+    const deltaKey = 'all';
+    const fsQuery = buildUnfilteredDeltaQuery('clubs', deltaKey);
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: ClubItem[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as ClubItem);
           });
           offlineStore.syncFromFirestore('clubs', list);
-        } else {
-          // If Firestore collection is empty, seed it with the official 36 clubs!
+        } else if (scope?.role === 'admin' || scope?.role === 'superAdmin') {
+          // Only admins trigger auto-seeding if Firestore collection has no records
           seedClubsToFirestoreIfEmpty().catch(err => {
             console.warn('Auto-seed clubs notice:', err);
           });
+        }
+        if (!snapshot.metadata?.fromCache) {
+          markDeltaSynced('clubs', deltaKey);
         }
       },
       error => {
@@ -3551,24 +3765,45 @@ export function subscribeClubs(onUpdate: (items: ClubItem[]) => void): Unsubscri
   };
 }
 
-export function subscribeClubEnrollments(onUpdate: (items: ClubEnrollment[]) => void): Unsubscribe {
+export function subscribeClubEnrollments(
+  onUpdate: (items: ClubEnrollment[]) => void,
+  scope?: SubscriptionScope
+): Unsubscribe {
   const unsubLocal = offlineStore.subscribe('clubEnrollments', list => {
     const active = list.filter(e => e.status !== 'Bekor qilingan');
     onUpdate(active);
   });
 
+  // Public guests do not need to download private enrollment records
+  if (!scope?.userId) {
+    return unsubLocal;
+  }
+
   let unsubFirestore = () => {};
   try {
-    const colRef = collection(db, 'clubEnrollments');
+    let fsQuery: any;
+    let deltaKey: string | null = null;
+
+    if (scope.role === 'student') {
+      if (!scope.studentId) return unsubLocal;
+      fsQuery = query(collection(db, 'clubEnrollments'), where('studentId', '==', scope.studentId));
+    } else {
+      deltaKey = scope.role || 'auth';
+      fsQuery = buildUnfilteredDeltaQuery('clubEnrollments', deltaKey);
+    }
+
     unsubFirestore = onSnapshot(
-      colRef,
-      snapshot => {
+      fsQuery,
+      (snapshot: any) => {
         if (!snapshot.empty) {
           const list: ClubEnrollment[] = [];
-          snapshot.forEach(docSnap => {
+          snapshot.forEach((docSnap: any) => {
             list.push({ id: docSnap.id, ...docSnap.data() } as ClubEnrollment);
           });
           offlineStore.syncFromFirestore('clubEnrollments', list);
+        }
+        if (deltaKey && !snapshot.metadata?.fromCache) {
+          markDeltaSynced('clubEnrollments', deltaKey);
         }
       },
       error => {
@@ -3602,16 +3837,7 @@ export async function createClub(
 
   const cleaned = removeUndefinedFields(item);
   offlineStore.saveItem('clubs', cleaned);
-
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, cleaned),
-      5000,
-      "To'garak ma'lumotlarini saqlashda vaqt tugadi."
-    );
-  } catch (err) {
-    console.warn('Firestore createClub note (saved locally):', err);
-  }
+  await persistSetWithOutbox('clubs', ref.id, cleaned, false, 5000);
 
   if (actor) {
     await logAuditAction(
@@ -3631,7 +3857,6 @@ export async function updateClub(
   updates: Partial<ClubItem>,
   actor?: { id: string; fullName: string; role: UserRole }
 ): Promise<void> {
-  const ref = doc(db, 'clubs', id);
   const existing = offlineStore.getById('clubs', id) as ClubItem | undefined;
 
   const cleanedUpdates = removeUndefinedFields({
@@ -3646,15 +3871,7 @@ export async function updateClub(
     });
   }
 
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, cleanedUpdates, { merge: true }),
-      5000,
-      "To'garak ma'lumotlarini yangilashda vaqt tugadi."
-    );
-  } catch (err) {
-    console.warn('Firestore updateClub note (saved locally):', err);
-  }
+  await persistSetWithOutbox('clubs', id, cleanedUpdates, true, 5000);
 
   if (actor) {
     await logAuditAction(
@@ -3703,8 +3920,9 @@ export async function enrollInClub(
     studentFaculty: student.facultyOrField || '',
     studentCourse: student.course,
     enrolledAt: nowIso,
+    updatedAt: nowIso,
     status: 'Faol',
-  };
+  } as ClubEnrollment;
 
   const cleanedEnrollment = removeUndefinedFields(enrollment);
   offlineStore.saveItem('clubEnrollments', cleanedEnrollment);
@@ -3722,43 +3940,40 @@ export async function enrollInClub(
       };
       offlineStore.saveItem('clubs', updatedClub);
 
-      try {
-        const clubRef = doc(db, 'clubs', clubId);
-        await setDoc(clubRef, {
+      await persistSetWithOutbox(
+        'clubs',
+        clubId,
+        {
           enrolledStudentIds: updatedIds,
           enrolledStudentsCount: updatedIds.length,
           updatedAt: nowIso,
-        }, { merge: true });
-      } catch (err) {
-        console.warn('Firestore update club participant count note:', err);
-      }
+        },
+        true,
+        5000
+      );
     }
   }
 
-  try {
-    await withFirestoreTimeout(
-      setDoc(ref, cleanedEnrollment),
-      5000,
-      "To'garakka yozilishda vaqt tugadi."
-    );
-  } catch (err) {
-    console.warn('Firestore enrollInClub note (saved locally):', err);
-  }
+  await persistSetWithOutbox('clubEnrollments', ref.id, cleanedEnrollment, false, 5000);
 
   return ref.id;
 }
 
 export async function unenrollFromClub(clubId: string, studentId: string): Promise<void> {
+  const nowIso = new Date().toISOString();
   // 1. Remove or cancel from clubEnrollments
   const allEnrollments = offlineStore.get('clubEnrollments');
   const target = allEnrollments.find(e => e.clubId === clubId && e.studentId === studentId);
   if (target) {
-    const updated = { ...target, status: 'Bekor qilingan' as const };
+    const updated = { ...target, status: 'Bekor qilingan' as const, updatedAt: nowIso };
     offlineStore.saveItem('clubEnrollments', updated);
-    try {
-      const eRef = doc(db, 'clubEnrollments', target.id);
-      await setDoc(eRef, { status: 'Bekor qilingan' }, { merge: true });
-    } catch {}
+    await persistSetWithOutbox(
+      'clubEnrollments',
+      target.id,
+      { status: 'Bekor qilingan', updatedAt: nowIso },
+      true,
+      5000
+    );
   }
 
   // 2. Remove from club's attendee array
@@ -3769,18 +3984,21 @@ export async function unenrollFromClub(clubId: string, studentId: string): Promi
       ...existingClub,
       enrolledStudentIds: currentIds,
       enrolledStudentsCount: currentIds.length,
-      updatedAt: new Date().toISOString(),
+      updatedAt: nowIso,
     };
     offlineStore.saveItem('clubs', updatedClub);
 
-    try {
-      const cRef = doc(db, 'clubs', clubId);
-      await setDoc(cRef, {
+    await persistSetWithOutbox(
+      'clubs',
+      clubId,
+      {
         enrolledStudentIds: currentIds,
         enrolledStudentsCount: currentIds.length,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
-    } catch {}
+        updatedAt: nowIso,
+      },
+      true,
+      5000
+    );
   }
 }
 
@@ -3794,10 +4012,11 @@ export async function seedClubsToFirestoreIfEmpty(): Promise<void> {
     const missingClubs = INITIAL_CLUBS_DATA.filter(c => !existingDocIds.has(c.id));
     if (missingClubs.length === 0) return;
 
+    const nowIso = new Date().toISOString();
     const batch = writeBatch(db);
     for (const club of missingClubs) {
       const docRef = doc(db, 'clubs', club.id);
-      batch.set(docRef, removeUndefinedFields(club), { merge: true });
+      batch.set(docRef, removeUndefinedFields({ ...club, updatedAt: club.updatedAt || nowIso }), { merge: true });
     }
     await batch.commit();
     console.log(`${missingClubs.length} ta yangi rasmiy to'garak Firestore'ga muvaffaqiyatli saqlandi.`);

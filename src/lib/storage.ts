@@ -105,6 +105,97 @@ export function validatePdfFile(file: File | null | undefined): FileValidationRe
   return { valid: true };
 }
 
+let cachedLangCertFilesPromise: Promise<Record<string, string>> | null = null;
+
+async function getLazyLangCertFiles(): Promise<Record<string, string>> {
+  if (!cachedLangCertFilesPromise) {
+    cachedLangCertFilesPromise = fetch('/data/lang-cert-files.json')
+      .then(res => (res.ok ? res.json() : {}))
+      .catch(() => ({}));
+  }
+  return cachedLangCertFilesPromise;
+}
+
+function dataUrlToBlobUrl(dataUrl: string): string {
+  if (!dataUrl || dataUrl.startsWith('data:image/')) {
+    return dataUrl;
+  }
+  try {
+    const parts = dataUrl.split(',');
+    const mime = parts[0]?.split(':')[1]?.split(';')[0] || 'application/pdf';
+    const b64 = parts[1];
+    if (!b64) return dataUrl;
+    const bin = atob(b64);
+    const len = bin.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: mime });
+    return URL.createObjectURL(blob);
+  } catch (e) {
+    console.warn('Error converting dataUrl to blob URL:', e);
+    return dataUrl;
+  }
+}
+
+async function blobToBase64(blob: Blob): Promise<string> {
+  const buffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+/**
+ * Attempts uploading a file to personal 15GB Google Drive via server proxy (/api/drive/upload).
+ * Returns null cleanly if Google Drive is not configured yet so caller falls back without errors.
+ */
+async function tryUploadToGoogleDrive(
+  blob: Blob,
+  fileName: string,
+  mimeType: string,
+  category: string,
+  timeoutMs: number = 18000
+): Promise<{ fileUrl: string; storagePath: string } | null> {
+  if (typeof window === 'undefined' || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
+    return null;
+  }
+  try {
+    const base64 = await blobToBase64(blob);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    const res = await fetch('/api/drive/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        fileName,
+        mimeType,
+        category,
+        base64,
+      }),
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json && json.ok && json.fileUrl) {
+      return {
+        fileUrl: json.fileUrl,
+        storagePath: json.storagePath || `gdrive://${category}/${json.fileId || ''}`,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Generates a collision-resistant unique ID for storage paths
  */
@@ -223,18 +314,38 @@ export async function uploadPdfDocument(
     message: 'PDF yuklanmoqda... 10%',
   });
 
-  // Verify Firebase configuration
-  if (!firebaseConfig.projectId) {
+  // Attempt 1: Personal Google Drive server proxy (if configured)
+  let storageSuccess = false;
+  let downloadUrl = '';
+  let resolvedStoragePath = storagePath;
+
+  const driveUpload = await tryUploadToGoogleDrive(
+    file,
+    `${uniqueId}_${file.name}`,
+    'application/pdf',
+    category,
+    45000
+  );
+  if (driveUpload) {
+    downloadUrl = driveUpload.fileUrl;
+    resolvedStoragePath = driveUpload.storagePath;
+    storageSuccess = true;
+    onProgress?.({
+      step: 'uploading',
+      percent: 95,
+      message: 'PDF Google Drive xotirasiga yuklandi (95%)...',
+    });
+  }
+
+  // Verify Firebase configuration only if Drive upload was skipped/unconfigured
+  if (!storageSuccess && !firebaseConfig.projectId) {
     const err = 'Firebase konfiguratsiyasi topilmadi. Tizim sozlamalarini tekshiring.';
     onProgress?.({ step: 'error', percent: 0, message: err });
     throw new Error(err);
   }
 
-  // Attempt real Firebase Storage upload with uploadBytesResumable
-  let storageSuccess = false;
-  let downloadUrl = '';
-
-  try {
+  // Attempt 2: Real Firebase Storage upload with uploadBytesResumable
+  if (!storageSuccess) try {
     const storageRef = ref(storage, storagePath);
     const metadata = {
       contentType: 'application/pdf',
@@ -339,7 +450,7 @@ export async function uploadPdfDocument(
     fileName: file.name,
     fileSize: file.size,
     fileType: 'application/pdf',
-    storagePath,
+    storagePath: resolvedStoragePath,
     uniqueId,
   };
 }
@@ -351,28 +462,35 @@ export async function uploadPdfDocument(
 export async function resolvePdfUrl(fileUrl: string): Promise<string> {
   if (!fileUrl) return '';
 
+  // Lazy-loaded language certificate snapshot blob cache (/data/lang-cert-files.json)
+  if (fileUrl.startsWith('local-cert-cache://')) {
+    const certId = fileUrl.replace('local-cert-cache://', '').trim();
+    const filesMap = await getLazyLangCertFiles();
+    const cachedDataUrl = filesMap[certId];
+    if (!cachedDataUrl) {
+      throw new Error('Sertifikat fayli lokal arxivda topilmadi.');
+    }
+    return dataUrlToBlobUrl(cachedDataUrl);
+  }
+
+  // Google Drive server proxy reference
+  if (fileUrl.startsWith('gdrive://')) {
+    const cleanId = fileUrl.replace('gdrive://', '').split('/').pop()?.trim() || '';
+    if (cleanId && typeof window !== 'undefined') {
+      return `${window.location.origin}/api/drive/file/${encodeURIComponent(cleanId)}`;
+    }
+  }
+  if (fileUrl.startsWith('/api/drive/file/') && typeof window !== 'undefined') {
+    return `${window.location.origin}${fileUrl}`;
+  }
+
   // Convert data:application/pdf or data:application/octet-stream to Blob URL
   // because Chrome strictly blocks data: URLs in frames and objects
   if (
     fileUrl.startsWith('data:application/pdf') ||
     fileUrl.startsWith('data:application/octet-stream')
   ) {
-    try {
-      const parts = fileUrl.split(',');
-      const mime = parts[0].split(':')[1].split(';')[0] || 'application/pdf';
-      const b64 = parts[1];
-      const bin = atob(b64);
-      const len = bin.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = bin.charCodeAt(i);
-      }
-      const blob = new Blob([bytes], { type: mime });
-      return URL.createObjectURL(blob);
-    } catch (e) {
-      console.warn('Error converting PDF dataUrl to blob URL:', e);
-      return fileUrl;
-    }
+    return dataUrlToBlobUrl(fileUrl);
   }
 
   // Already standard HTTP(S), Blob, or Image Data URL
@@ -643,8 +761,20 @@ export async function uploadProfilePhotoToFirebaseStorage(
 
   let downloadUrl = '';
 
-  // 2. Attempt Firebase Storage upload with 5-second timeout guard
-  try {
+  // 2A. Attempt Google Drive proxy upload first (if configured)
+  const drivePhoto = await tryUploadToGoogleDrive(
+    compressed.blob,
+    `profile_${userId}.jpg`,
+    'image/jpeg',
+    'profilePhotos',
+    20000
+  );
+  if (drivePhoto) {
+    downloadUrl = drivePhoto.fileUrl;
+  }
+
+  // 2B. Attempt Firebase Storage upload with 5-second timeout guard if Drive not used
+  if (!downloadUrl) try {
     const extMatch = file.name.match(/\.([0-9a-z]+)(?:[\?#]|$)/i);
     const rawExt = extMatch ? extMatch[1].toLowerCase() : 'jpg';
     const cleanExt = ['jpg', 'jpeg', 'png'].includes(rawExt) ? rawExt : 'jpg';
@@ -786,8 +916,20 @@ export async function deleteProfilePhotoFromStorage(photoUrl?: string, userId?: 
  * Cleans up orphan storage file if Firestore document creation fails
  */
 export async function cleanupStorageFile(fileUrl?: string, storagePath?: string): Promise<void> {
+  // 0. Clean from Google Drive if URL was /api/drive/file/ or gdrive://
+  if (fileUrl && (fileUrl.startsWith('/api/drive/file/') || fileUrl.startsWith('gdrive://'))) {
+    const fileId = fileUrl.split('/').pop()?.trim();
+    if (fileId) {
+      fetch('/api/drive/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId }),
+      }).catch(() => {});
+    }
+  }
+
   // 1. Clean from Firebase Storage if path was given
-  if (storagePath) {
+  if (storagePath && !storagePath.startsWith('gdrive://')) {
     try {
       const storageRef = ref(storage, storagePath);
       await deleteObject(storageRef);

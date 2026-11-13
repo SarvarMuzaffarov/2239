@@ -301,6 +301,7 @@ export async function registerStudent(data: {
   const userRef = doc(collection(db, 'users'));
   const studentRef = doc(collection(db, 'students'));
 
+  const nowIso = new Date().toISOString();
   const userAccount: UserAccount = {
     id: userRef.id,
     phone: normalized,
@@ -309,7 +310,8 @@ export async function registerStudent(data: {
     role: 'student',
     fullName: data.fullName.trim(),
     isActive: true,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   const studentProfile: StudentProfile = {
@@ -322,7 +324,8 @@ export async function registerStudent(data: {
     facultyOrField: canonicalFaculty,
     supervisorId: data.supervisorId || '',
     customSupervisorName: data.customSupervisorName?.trim() || '',
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   offlineStore.saveItem('users', userAccount);
@@ -432,6 +435,7 @@ export async function registerStudentByAdmin(
   const userRef = doc(collection(db, 'users'));
   const studentRef = doc(collection(db, 'students'));
 
+  const nowIso = new Date().toISOString();
   const userAccount: UserAccount = {
     id: userRef.id,
     phone: normalized,
@@ -440,7 +444,8 @@ export async function registerStudentByAdmin(
     role: 'student',
     fullName: data.fullName.trim(),
     isActive: true,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   const studentProfile: StudentProfile = {
@@ -453,7 +458,8 @@ export async function registerStudentByAdmin(
     facultyOrField: canonicalFaculty,
     supervisorId: data.supervisorId || '',
     customSupervisorName: data.customSupervisorName?.trim() || '',
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   // 1. Immediately update offlineStore memory and IndexedDB (triggers real-time subscriptions)
@@ -781,6 +787,7 @@ export async function createSupervisorAccount(
 
   let userId: string | undefined;
 
+  const nowIso = new Date().toISOString();
   // If password provided, create login account
   if (data.password) {
     const pwdCheck = validatePasswordStrength(data.password);
@@ -804,7 +811,8 @@ export async function createSupervisorAccount(
       role: 'supervisor',
       fullName: data.fullName.trim(),
       isActive: true,
-      createdAt: new Date().toISOString(),
+      createdAt: nowIso,
+      updatedAt: nowIso,
     };
     await setDoc(userRef, userAccount);
   }
@@ -819,7 +827,8 @@ export async function createSupervisorAccount(
     position: data.position.trim(),
     academicDegree: data.academicDegree.trim(),
     department: data.department.trim(),
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   await setDoc(supRef, supervisor);
@@ -1005,6 +1014,7 @@ export async function createAdminUserWithPermissions(
   const passwordHash = await hashPassword(data.password, salt);
   const userRef = doc(collection(db, 'users'));
 
+  const nowIso = new Date().toISOString();
   const user: UserAccount = {
     id: userRef.id,
     fullName: data.fullName.trim(),
@@ -1018,7 +1028,8 @@ export async function createAdminUserWithPermissions(
     role: data.role || 'admin',
     permissions: data.permissions,
     isActive: true,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
   };
 
   await setDoc(userRef, user);

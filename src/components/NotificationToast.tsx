@@ -17,6 +17,23 @@ interface Props {
   onClose?: () => void;
 }
 
+function formatToastMessage(msg?: string): { message: string; type?: 'success' | 'error' | 'info' } {
+  if (!msg) return { message: '' };
+  if (
+    msg.includes('Quota limit exceeded') ||
+    msg.includes('Free daily read units') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    (msg.includes('Quota') && msg.includes('quota metric'))
+  ) {
+    return {
+      message: "Firebase kunlik bepul so'rovlar limiti (50,000 ta) tugagan. Tizim xavfsiz lokal rejimda ishlamoqda — kiritilgan o'zgarishlar qurilmada saqlandi va limit tiklangach bazaga sinxronlanadi.",
+      type: 'info',
+    };
+  }
+  return { message: msg };
+}
+
 export const NotificationToast: React.FC<Props> = ({
   toasts,
   onDismiss,
@@ -26,19 +43,20 @@ export const NotificationToast: React.FC<Props> = ({
   onClose,
 }) => {
   const activeToasts: ToastMessage[] = React.useMemo(() => {
-    if (Array.isArray(toasts)) {
-      return toasts;
-    }
-    if (message) {
-      return [
-        {
-          id: id || 'toast-single',
-          type: type || 'info',
-          message,
-        },
-      ];
-    }
-    return [];
+    const rawList: ToastMessage[] = Array.isArray(toasts)
+      ? toasts
+      : message
+      ? [{ id: id || 'toast-single', type: type || 'info', message }]
+      : [];
+
+    return rawList.map(t => {
+      const formatted = formatToastMessage(t.message);
+      return {
+        ...t,
+        message: formatted.message,
+        type: formatted.type || t.type,
+      };
+    });
   }, [toasts, id, type, message]);
 
   useEffect(() => {
